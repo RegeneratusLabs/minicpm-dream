@@ -70,7 +70,9 @@ cat ~/.local/share/minicpm-dream/DREAMS.md
 The mock run proves the plumbing. It does not prove model quality; that is what
 `minicpm-dream eval` and `docs/models.md` are for.
 
-**Status:** v0.4.0. Retrieval is the complete OpenBMB stack
+**Status:** v1.0.0-rc1 — code-complete for v1. Final 1.0 awaits the 100–300
+fact eval and macOS/Windows smoke tests. Release checklist and known limits:
+[docs/release.md](docs/release.md). Retrieval is the complete OpenBMB stack
 (MiniCPM-Embedding-Light + MiniCPM-Reranker-Light). The optimised 2B pipeline
 now reaches **0.80–0.97 F1** on the 24-message / 14-fact day (best run
 P 0.93 / R 1.00 / F1 0.97 in 334 s), versus **0.81–0.90** for DeepSeek Flash.
@@ -187,6 +189,14 @@ minicpm-dream eval --suite evals/synthetic-days/full-day
 minicpm-dream generate-eval --out evals/generated/my-suite --days 10 --facts 120
 ```
 
+## Project status
+
+The implementation is complete for the v1 scope: local extraction/consolidation,
+reviewed Hermes writes, safety guards, OpenBMB retrieval, CLI, packaging, and
+tests. The remaining release-confidence work is an expanded 100–300 fact eval,
+an optimized multi-session Hermes pass, and macOS/Windows smoke tests. See
+[docs/release.md](docs/release.md).
+
 ## Development
 
 ```bash
@@ -225,6 +235,10 @@ baseline, then a targeted LoRA only if the floor is still too low.
   use full-disk encryption if that matters.
 - Fine-tuning is not part of v1. `docs/models.md` records where zero-shot fails
   before any training work starts.
+
+## Contributing and security
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) and [SECURITY.md](SECURITY.md).
 
 ## License
 

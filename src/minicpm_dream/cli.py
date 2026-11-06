@@ -53,7 +53,11 @@ def _load(args: argparse.Namespace, *, backend: str | None = None, model: str | 
     if model_path:
         cfg.model.model_path = str(Path(model_path).expanduser())
     if getattr(args, "hermes_home", None):
-        cfg.hermes.home = str(Path(args.hermes_home).expanduser())
+        new_home = Path(args.hermes_home).expanduser()
+        old_default_db = Path(cfg.hermes.home).expanduser() / "state.db"
+        cfg.hermes.home = str(new_home)
+        if Path(cfg.hermes.state_db).expanduser() == old_default_db:
+            cfg.hermes.state_db = str(new_home / "state.db")
         cfg.resolve()
     setup_logging(getattr(args, "verbose", False), Path(cfg.paths.logs) / "minicpm-dream.log")
     return cfg

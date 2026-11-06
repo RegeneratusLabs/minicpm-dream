@@ -48,3 +48,39 @@ def test_cli_run_and_gate(tmp_path, capsys):
     code = main(["review", "list", "--data-dir", data_dir])
     assert code == 0
     assert "proposals" in capsys.readouterr().out
+
+
+def test_cli_generate_eval(tmp_path, capsys):
+    out = tmp_path / "generated"
+    code = main(
+        [
+            "generate-eval",
+            "--out", str(out),
+            "--seed", "5",
+            "--days", "2",
+            "--facts", "8",
+            "--force",
+        ]
+    )
+    assert code == 0
+    assert (out / "episodes.jsonl").is_file()
+    assert (out / "gold.json").is_file()
+    assert (out / "labels.json").is_file()
+
+
+def test_install_hermes_gate(tmp_path):
+    home = tmp_path / "hermes"
+    (home / "memories").mkdir(parents=True)
+    code = main(["install-hermes-gate", "--hermes-home", str(home)])
+    assert code == 0
+    script = home / "scripts" / "minicpm-dream-gate.sh"
+    assert script.is_file()
+    assert "gate --source hermes" in script.read_text()
+    assert main(["install-hermes-gate", "--hermes-home", str(home), "--check"]) == 0
+
+
+def test_hermes_home_moves_default_state_db(tmp_path):
+    home = tmp_path / "hermes"
+    (home / "memories").mkdir(parents=True)
+    code = main(["doctor", "--data-dir", str(tmp_path / "data"), "--hermes-home", str(home)])
+    assert code == 0

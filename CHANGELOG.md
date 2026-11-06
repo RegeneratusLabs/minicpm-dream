@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.0.0-rc1 — release candidate
+
+- `python -m minicpm_dream` entrypoint; clean-wheel install verified.
+- Hermes gate installer and `--hermes-home` isolation tested.
+- Optimized local run on a real Hermes sandbox: 12 chunks, 10 ledger writes,
+  1 `MEMORY.md` addition, OpenBMB reranker active, live files untouched.
+- `SECURITY.md`, `CONTRIBUTING.md`, and [docs/release.md](docs/release.md)
+  release checklist.
+- CI matrix for Python 3.11 and 3.12.
+- 82 tests passing; ruff and mypy clean.
+
 ## 0.4.0 — scalable eval and training scaffold
 
 - `minicpm-dream generate-eval` creates deterministic multi-day suites with
