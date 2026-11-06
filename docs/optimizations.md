@@ -80,6 +80,21 @@ The defaults are a middle ground (1500-token chunks, fallback enabled,
 sequential reconcile, compaction). Use `--quality` for a nightly pass where the
 machine is otherwise idle; use `--fast` for interactive previews.
 
+## Generated-suite results
+
+A 30-fact / 3-day / 74-episode generated suite, same quality settings, on the
+reference CPU:
+
+| Precision | Recall | F1 | Temporal | Schema | Safety | Time |
+|---:|---:|---:|---:|---:|---:|---:|
+| 0.784 | 0.967 | 0.866 | 1.00 | 1.00 | 0 | 634 s |
+
+It found 29/30 gold facts; the precision loss is duplicate/extra event and
+relationship phrasing, not hallucinated numbers. A 120-fact / 10-day run was
+started and stopped after **48 minutes** because it was still in
+extraction/verification on this CPU. That is the scaling limit of quality mode:
+for 100–300 facts, use a GPU or `--fast` (or accept an overnight run).
+
 ## Remaining levers
 
 1. **Q8_0 2B** — a likely small quality bump for ~1.7× latency; not measured yet.

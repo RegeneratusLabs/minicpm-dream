@@ -128,6 +128,7 @@ llama.cpp b12144, 4 threads, 8192 context):
 | **MiniCPM5-2B, optimised pipeline** | full-day, 24 msgs / 14 facts | **0.88–0.93** | **0.86–1.00** | **0.80–0.97** | 1.0 | 0.67–1.0 | 0 | 300–440 s |
 | **same, best seed** | full-day, 24 msgs / 14 facts | **0.93** | **1.00** | **0.97** | 1.0 | 1.00 | 0 | 334 s |
 | deepseek-flash (cloud) | full-day, 24 msgs / 14 facts | 0.85–0.92 | 0.79–0.86 | 0.81–0.90 | 1.0 | 0.33–0.67 | 0 | 12–39 s |
+| MiniCPM5-2B optimized | generated, 30 facts / 74 eps | 0.784 | 0.967 | 0.866 | 1.0 | 1.00 | 0 | 634 s |
 
 The full-day suite is deliberately denser than `basic/`: 24 turns across three
 days, 14 gold facts, an update, explicit dates, a Chinese turn, a retraction, a

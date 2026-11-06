@@ -28,7 +28,9 @@
 - [x] reviewed Hermes write path with lock, backup, and char limits
 - [x] cron wake gate
 - [x] release, security, contributing docs
-- [ ] 100–300 fact local-vs-cloud evaluation (generator ready; run pending)
+- [~] 30-fact generated suite: P0.784 / R0.967 / F1 0.866 / temporal 1.00 in 634 s
+- [ ] 100–300 fact evaluation: the 120-fact CPU quality attempt was stopped after
+      48 min in extraction; run on a GPU or with `--fast`
 - [ ] macOS/Windows runtime smoke test
 
 The unchecked items are confidence work, not missing implementation. Do not claim
@@ -38,7 +40,7 @@ The unchecked items are confidence work, not missing implementation. Do not clai
 
 - The 2B is stochastic: the 14-fact suite ranged 0.80–0.97 F1 across seeds.
 - Quality mode costs ~5–7 minutes for a dense day on the reference CPU; cloud is
-  ~10–20× faster.
+  ~10–20× faster. A 120-fact suite does not finish in under an hour on this CPU.
 - `MEMORY.md` is often near its 2,200-char limit; the tool reports pressure and
   refuses over-budget writes, but does not automatically compact the live profile.
 - No encryption at rest; rely on disk encryption and a dedicated OS account.
