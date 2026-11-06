@@ -131,6 +131,17 @@ These are why the interface looks the way it does:
 When a model fails, prefer to fix the *interface* (smaller schema, explicit
 field descriptions, fewer items per call) before fine-tuning.
 
+### Live-day observation
+
+A dry run over one real Hermes day (17 human/assistant turns, one 3,649-token
+chunk) produced **0 candidates, 0 writes**, in 90 s. The prompt was dominated by
+CPU prefill (~4.7K actual prompt tokens); generation was one JSON line.
+
+That is a plausible quiet day, not proof of correct restraint. It could also be
+under-extraction. The next suite must include both a deliberately quiet day
+(expect 0) and a busy day with known facts (expect recall), and the pass should
+be judged on both.
+
 ### Next measurements
 
 - 100–300 message synthetic days with 20–50 gold facts, contradictions,

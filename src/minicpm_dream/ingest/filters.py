@@ -72,7 +72,8 @@ class EpisodeFilter:
             self.stats.redactions += sum(result.hits.values())
             ep.text = result.text
             ep.flags.extend(f"redacted:{k}" for k in result.hits)
-            if result.hits and self.privacy.drop_redacted:
+            sensitive = set(result.hits) - {"email", "phone", "phone_intl"}
+            if sensitive and self.privacy.drop_redacted:
                 self.stats.dropped_secret += 1
                 return False
         if self.privacy.screen_injection:

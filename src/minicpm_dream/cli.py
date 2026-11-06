@@ -221,6 +221,8 @@ def cmd_ingest(args: argparse.Namespace) -> int:
 
 def cmd_run(args: argparse.Namespace) -> int:
     cfg = _load(args, backend=args.backend, model=args.model, model_path=args.model_path)
+    if getattr(args, "max_minutes", None):
+        cfg.budgets.max_minutes = args.max_minutes
     since, until, label = _window(args, cfg)
     backend = make_backend(cfg, mock_script=args.mock_script)
     try:
@@ -370,6 +372,16 @@ def cmd_gate(args: argparse.Namespace) -> int:
     pending = 0
     blocked = 0
     actions = 0
+    if not Path(cfg.paths.db).is_file():
+        print(
+            json.dumps(
+                {
+                    "wakeAgent": False,
+                    "context": {"reason": "no ledger yet", "review_actions": 0},
+                }
+            )
+        )
+        return 0
     try:
         with Store(cfg.paths.db) as store:
             pending = int(store.proposal_counts().get("pending", 0))
@@ -488,7 +500,7 @@ def cmd_maintain(args: argparse.Namespace) -> int:
 def cmd_eval(args: argparse.Namespace) -> int:
     from .eval.harness import run_suite
 
-    cfg = _load(args, backend=args.backend, model=args.model)
+    cfg = _load(args, backend=args.backend, model=args.model, model_path=args.model_path)
     backend = make_backend(cfg, mock_script=args.mock_script)
     try:
         report = run_suite(cfg, backend, suite=args.suite or cfg.eval.suite)
@@ -577,6 +589,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--model")
     p.add_argument("--model-path")
     p.add_argument("--mock-script")
+    p.add_argument("--max-minutes", type=float)
     p.add_argument("--dry-run", action="store_true")
     p.add_argument("--apply-hermes", action="store_true")
     p.set_defaults(func=cmd_run)
@@ -628,6 +641,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--suite")
     p.add_argument("--backend", choices=["llama_cpp", "openai", "mock"])
     p.add_argument("--model")
+    p.add_argument("--model-path")
     p.add_argument("--mock-script")
     p.set_defaults(func=cmd_eval)
 

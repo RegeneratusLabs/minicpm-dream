@@ -91,7 +91,7 @@ class IngestCfg:
         if self.sources is None:
             self.sources = ["hermes", "jsonl"]
         if self.trusted_sources is None:
-            self.trusted_sources = ["telegram", "desktop", "tui", "cli", "local"]
+            self.trusted_sources = ["telegram", "desktop", "tui", "cli", "local", "jsonl"]
         if self.exclude_sources is None:
             self.exclude_sources = ["cron", "subagent", "oneshot", "tool"]
 

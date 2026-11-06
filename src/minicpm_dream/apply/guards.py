@@ -31,7 +31,10 @@ class LossCheck:
 
 def snapshot(store: Any) -> dict[str, int]:
     counts = store.counts()
-    return {"entries": int(counts.get("active", 0)), "chars": int(counts.get("chars", 0))}
+    return {
+        "entries": int(counts.get("active", 0)),
+        "chars": int(counts.get("active_chars", counts.get("chars", 0))),
+    }
 
 
 def check_loss(before: dict[str, int], after: dict[str, int], *, threshold: float = 0.25) -> LossCheck:

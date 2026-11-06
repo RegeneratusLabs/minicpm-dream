@@ -257,6 +257,11 @@ class Store:
         out = {r["status"]: int(r["n"]) for r in rows}
         out["chars"] = sum(int(r["chars"]) for r in rows)
         out["active"] = out.get("active", 0)
+        row = self.conn.execute(
+            "SELECT COALESCE(SUM(CASE WHEN status='active' THEN LENGTH(text) ELSE 0 END),0) AS n "
+            "FROM memories"
+        ).fetchone()
+        out["active_chars"] = int(row["n"])
         return out
 
     # -- retrieval ----------------------------------------------------------

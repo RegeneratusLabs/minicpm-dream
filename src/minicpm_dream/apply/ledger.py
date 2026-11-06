@@ -211,7 +211,10 @@ def apply_decisions(
                 payload=_candidate_payload(decision), decision=decision, applied=True,
             )
         after_counts = store.counts()
-        after = {"entries": int(after_counts.get("active", 0)), "chars": int(after_counts.get("chars", 0))}
+        after = {
+            "entries": int(after_counts.get("active", 0)),
+            "chars": int(after_counts.get("active_chars", after_counts.get("chars", 0))),
+        }
         loss = check_loss(before, after, threshold=0.25)
         result.loss = loss.as_dict()
         if not loss.ok:

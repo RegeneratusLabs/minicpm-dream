@@ -122,7 +122,9 @@ timeout_s = 180
 
 The server must accept `response_format: {"type": "json_schema", ...}`. If it
 does not, it will still work but JSON validity is no longer guaranteed by the
-server; the parser and validators remain the backstop.
+server; the parser and validators remain the backstop. The backend also sends
+`chat_template_kwargs: {"enable_thinking": false}`; if your server rejects that
+field, set `model.disable_thinking = false` and disable thinking server-side.
 
 ## Scheduling
 
