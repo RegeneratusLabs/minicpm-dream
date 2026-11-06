@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "minicpm-dream"
 version = "1.0.0rc1"
-description = "Local MiniCPM memory consolidation for agent harnesses"
+description = "Nightly memory consolidation for AI agents, on your own machine"
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }

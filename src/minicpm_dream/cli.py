@@ -662,7 +662,7 @@ def cmd_install_gate(args: argparse.Namespace) -> int:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="minicpm-dream",
-        description="Local MiniCPM memory consolidation for agent harnesses.",
+        description="Nightly memory consolidation for AI agents, on your own machine.",
     )
     parser.add_argument("--version", action="version", version=f"minicpm-dream {__version__}")
     sub = parser.add_subparsers(dest="command", required=True)

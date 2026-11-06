@@ -1,15 +1,93 @@
 # minicpm-dream
 
-**Local MiniCPM memory consolidation for agent harnesses.**
+**Your agent forgets the day. This gives it back.**
 
-An agent's day leaves behind thousands of messages: facts, preferences, decisions,
-open loops, corrections, and a lot of noise. `minicpm-dream` reads a window of
-that history, asks a small local MiniCPM model to extract typed memories, checks
-every claim against its source quote, reconciles it with what is already known,
-and writes a bitemporal SQLite ledger plus a human-readable `DREAMS.md` diary.
+An agent is good at the conversation in front of it and bad at everything before
+it. A day of work leaves hundreds of messages behind — a preference mentioned
+once, a decision, a name, an open loop, a correction — and tomorrow the context
+window has moved on.
 
-Hermes Agent is the first adapter. The core is harness-agnostic: any transcript
-that can be exported to JSONL works.
+`minicpm-dream` is a nightly pass over that day. It reads the transcript, asks a
+small [MiniCPM](https://huggingface.co/openbmb) model to pull out what is worth
+keeping, checks every claim against the words that produced it, and writes the
+result to a private ledger on your machine. In the morning there is a memory your
+agent can use and a diary you can read.
+
+It runs on your own hardware. No cloud account, no subscription, and no
+conversation leaves your disk.
+
+## What you get
+
+| | |
+|---|---|
+| **A memory that persists** | Facts, preferences, projects, people, decisions and open loops, stored with absolute dates and full history. |
+| **A diary, not a dump** | `DREAMS.md` says what was promoted, what changed and what needs a human — in sentences. |
+| **Receipts** | Every stored memory carries the verbatim quote it came from. No quote, no memory. |
+| **Corrections without erasure** | A changed fact supersedes the old one; nothing is silently deleted. `forget` leaves a tombstone. |
+| **Reviewed writes** | New or contested entries go to a review file first. Applying them needs an explicit flag and makes a backup. |
+| **Local by default** | Model, retrieval, ledger and exports all live on your machine. |
+
+## Try it in two minutes
+
+No model download: the repo ships a scripted mock that runs the whole pipeline
+offline.
+
+```bash
+git clone https://github.com/RegeneratusLabs/minicpm-dream
+cd minicpm-dream
+uv venv .venv && source .venv/bin/activate
+uv pip install -e ".[dev]"
+
+minicpm-dream run --source jsonl \
+  --input evals/synthetic-days/basic/episodes.jsonl \
+  --backend mock --mock-script evals/synthetic-days/basic/mock_script.json
+```
+
+```text
+run run_… ok: 6 episodes → 3 candidates → 3 verified → 3 changes (0 deferred)
+diary:   ~/.local/share/minicpm-dream/DREAMS.md
+exports: ~/.local/share/minicpm-dream/exports/review.json
+```
+
+Then read what it wrote, and ask it why:
+
+```bash
+cat ~/.local/share/minicpm-dream/DREAMS.md
+minicpm-dream search "dentist"
+minicpm-dream explain <memory-id>
+```
+
+The mock proves the plumbing, not the model. Model quality and its measured
+limits are in [docs/models.md](docs/models.md).
+
+## A diary you can read
+
+Here is a real mock run, trimmed of ids:
+
+```markdown
+## 2026-11-06 14:07 — 2026-11-04T14:00:00+00:00 → 2026-11-05T14:00:00+00:00
+
+Run `run_1793…` · model `mock` · 8 episodes → 3 candidates → 3 verified · 3 changes
+
+### Promoted
+- **preferences** — Josh prefers dark mode in all editors.
+  ↳ "I prefer dark mode in all my editors"
+- **projects** — The miniCPM-memory project uses Python 3.12 and SQLite for storage.
+  ↳ "The miniCPM-memory project uses Python 3.12 and SQLite for storage."
+- **open_loops** — Josh has a dentist appointment. (on 2026-11-06)
+  ↳ "dentist tomorrow at 3pm"
+
+### Safety
+- loss guard: ok (0→3 entries, 0→152 chars)
+- ingest: kept 8/8, redactions 1, quarantined 0, duplicates 0
+```
+
+The last memory shows the split of work. The model was allowed to read
+"tomorrow"; code resolved it to 2026-11-06 before anything was stored, so the
+memory does not go stale when read next week. The quote stays as it was said,
+because it is the receipt.
+
+## How it works
 
 ```text
 Hermes state.db ─┐
@@ -23,64 +101,39 @@ JSONL export ────┤→ filter/redact → chunk + date anchors → MiniC
                               SQLite ledger + DREAMS.md + reviewed Hermes proposals
 ```
 
-## Why this exists
+- **Ingest** filters noise, redacts secrets, quarantines prompt injection and
+  de-duplicates. It reads Hermes `state.db` read-only, or any JSONL transcript.
+- **Prepare** chunks the day and resolves relative dates ("tomorrow", "last
+  Saturday") into absolute dates in code, not in the model.
+- **Extract** asks the model for typed memories — facts, events, preferences,
+  tasks, decisions, open loops — one constrained JSON call per chunk.
+- **Verify** rejects any memory whose quote is not present in the source turn.
+- **Reconcile** decides ADD, UPDATE, SUPERSEDE, MERGE, NOOP or DEFER against
+  what is already known, and escalates uncertain decisions for review.
+- **Apply** writes a bitemporal SQLite ledger, a daily `DREAMS.md`, and (for
+  Hermes) reviewed proposals rather than direct edits.
 
-- **hermes-dreaming** is deterministic and wakes the host agent to apply
-  proposals. It is excellent, but it deliberately calls no LLM.
-- **OpenClaw dreaming** uses light/deep/REM phases and a dream diary, powered by
-  the runtime model.
-- **Letta sleep-time compute** shows consolidation belongs off the interactive
-  path.
-- **mem0 v3** moved to ADD-only and dropped write-time contradiction handling.
-  This project keeps write-time **supersede** with full history.
-- A 2026 LoCoMo study of small local memory managers found that a **narrow typed
-  protocol** is what lets a small model manage memory, that **absolute-date
-  grounding at write time** carries the temporal advantage, and that periodic
-  consolidation/merging is the missing maintenance layer. This project is built
-  around those findings.
+A deeper tour is in [docs/architecture.md](docs/architecture.md).
 
-The honest constraint: a 2B model should not be trusted to invent dates, silently
-delete memories, or decide merges alone. So dates are resolved in code, every
-memory needs a verbatim quote, merges are checked for invented numbers, and
-uncertain operations become review items instead of writes.
+## Built for a small model
 
-## Quickstart (no model required)
+The default is a 2B model, and a 2B model should not be trusted to invent dates,
+silently delete memories or decide merges alone. So the protocol is narrow and
+the safeguards are outside the model: dates are resolved in code, every memory
+needs a verbatim quote, merges are checked for invented numbers, supersession
+keeps history, and uncertain operations become review items instead of writes.
+A run that would drop more than 25% of active memory is rolled back.
 
-```bash
-git clone <this repo> minicpm-memory && cd minicpm-memory
-uv venv .venv && source .venv/bin/activate
-uv pip install -e ".[dev]"
-# optional, for the OpenBMB retrieval stack:
-uv pip install -e ".[openbmb]"
+The design borrows from hermes-dreaming, OpenClaw dreaming, Letta sleep-time
+compute and mem0, and from a 2026 LoCoMo study of small memory managers. The
+short version of that research: a narrow typed protocol plus absolute dates at
+write time is what lets a small model manage memory at all. See
+[docs/prior-art.md](docs/prior-art.md).
 
-# 1. See what the tool can see
-minicpm-dream doctor
+Hermes Agent is the first adapter. The core is harness-agnostic: any transcript
+that exports to JSONL works.
 
-# 2. Run the full pipeline with scripted mock generations
-minicpm-dream run --source jsonl \
-  --input evals/synthetic-days/basic/episodes.jsonl \
-  --backend mock --mock-script evals/synthetic-days/basic/mock_script.json
-
-# 3. Inspect the ledger and the diary
-minicpm-dream search "dentist"
-minicpm-dream explain <memory-id>
-cat ~/.local/share/minicpm-dream/DREAMS.md
-```
-
-The mock run proves the plumbing. It does not prove model quality; that is what
-`minicpm-dream eval` and `docs/models.md` are for.
-
-**Status:** v1.0.0-rc1 — code-complete for v1. Final 1.0 awaits the 100–300
-fact eval and macOS/Windows smoke tests. Release checklist and known limits:
-[docs/release.md](docs/release.md). Retrieval is the complete OpenBMB stack
-(MiniCPM-Embedding-Light + MiniCPM-Reranker-Light). The optimised 2B pipeline
-now reaches **0.80–0.97 F1** on the 24-message / 14-fact day (best run
-P 0.93 / R 1.00 / F1 0.97 in 334 s), versus **0.81–0.90** for DeepSeek Flash.
-The remaining gap is run-to-run variance, not average quality. Quality mode
-takes ~5–7 minutes on this CPU; `--fast` trades recall for time. See
-[docs/optimizations.md](docs/optimizations.md).
-
-## Local MiniCPM setup
+## Install for real
 
 Default model: **MiniCPM5-2B Q4_K_M** (2.52B parameters, 131K context,
 Apache-2.0, ~1.56 GB).
@@ -88,19 +141,25 @@ Apache-2.0, ~1.56 GB).
 ```bash
 # Download + checksum-verify the GGUF into the data directory
 minicpm-dream setup --download
-minicpm-dream setup --download-embeddings   # OpenBMB Light models
+minicpm-dream setup --download-embeddings   # optional OpenBMB retrieval models
 
 # Install llama.cpp (one option)
 #   https://github.com/ggml-org/llama.cpp  → put `llama-server` on PATH
 # or point at an existing binary:
 #   model.llama_server = "/opt/llama.cpp/build/bin/llama-server"
 
+# Check the environment, then run a day
+minicpm-dream doctor
 minicpm-dream run --source hermes --window day --dry-run
 minicpm-dream run --source hermes --window day
 ```
 
 On a CPU-only machine the nightly pass is a batch job; a typical day is a handful
-of 6K-token chunks. For a GPU endpoint (vLLM/SGLang/Ollama/LM Studio):
+of 6K-token chunks. On the reference machine (6-core i5-8500T, 15 GB RAM, no
+GPU) a dense day takes roughly 5–7 minutes in quality mode; `--fast` trades
+recall for time.
+
+For a GPU endpoint (vLLM/SGLang/Ollama/LM Studio):
 
 ```toml
 [model]
@@ -134,10 +193,10 @@ minicpm-dream install-hermes-gate
 # is nothing to review, and {"wakeAgent": true, "context": {...}} otherwise.
 ```
 
-See `docs/hermes-integration.md` for the two cron patterns (no-agent nightly pass
-and gate + review turn).
+See [docs/hermes-integration.md](docs/hermes-integration.md) for the two cron
+patterns (no-agent nightly pass, and gate + review turn).
 
-## Safety model
+## Privacy and safety
 
 - **Local by default.** No network calls except the explicit model download or a
   backend you configure.
@@ -153,6 +212,8 @@ and gate + review turn).
   `exports/review.json`; `apply-hermes` requires an explicit mode and creates a
   backup.
 
+The full data-flow and threat model are in [docs/privacy.md](docs/privacy.md).
+
 ## Model stack
 
 | Tier | Model | When |
@@ -167,8 +228,8 @@ and gate + review turn).
 Retrieval is a complete OpenBMB stack: **MiniCPM-Embedding-Light** (440M,
 1024-dim, 8K tokens, dense + sparse) and **MiniCPM-Reranker-Light** (1.2B
 cross-encoder). Both run locally; the models use the MiniCPM model license
-(free academic, commercial registration). See `docs/models.md` for CPU timings
-and the comparison with a cloud model.
+(free academic, commercial registration). See [docs/models.md](docs/models.md)
+for CPU timings and the comparison with a cloud model.
 
 ## Commands
 
@@ -189,13 +250,36 @@ minicpm-dream eval --suite evals/synthetic-days/full-day
 minicpm-dream generate-eval --out evals/generated/my-suite --days 10 --facts 120
 ```
 
-## Project status
+## Status and limits
 
-The implementation is complete for the v1 scope: local extraction/consolidation,
-reviewed Hermes writes, safety guards, OpenBMB retrieval, CLI, packaging, and
-tests. The remaining release-confidence work is an expanded 100–300 fact eval,
-an optimized multi-session Hermes pass, and macOS/Windows smoke tests. See
-[docs/release.md](docs/release.md).
+**v1.0.0-rc1, code-complete for v1.** The nightly pass, reviewed Hermes writes,
+safety guards, OpenBMB retrieval, CLI, packaging and tests are in place. The
+remaining release-confidence work is an expanded 100–300 fact evaluation, an
+optimised multi-session Hermes pass, and macOS/Windows smoke tests. The release
+checklist and known gaps are in [docs/release.md](docs/release.md).
+
+Measured on the 24-message / 14-fact day: the optimised 2B pipeline reaches
+**0.80–0.97 F1** (best run P 0.93 / R 1.00 / F1 0.97 in 334 s), versus
+**0.81–0.90** for DeepSeek Flash. The remaining gap is run-to-run variance, not
+average quality. These are regression comparisons on one synthetic scenario, not
+a benchmark; read [docs/models.md](docs/models.md) before quoting them.
+
+Known limits:
+
+- A 2B model can still miss a fact, over-compress a quote or choose a wrong
+  operation. The design turns those failures into rejections or review items,
+  not silent bad memory.
+- Quality mode costs several minutes for a dense day on a CPU. Cloud models are
+  10–20× faster.
+- English is the primary tested language; MiniCPM is bilingual CN/EN, but other
+  languages need their own eval fixtures.
+- No encryption at rest. The ledger and exports are `0600` in a `0700` directory;
+  use full-disk encryption if that matters.
+- `MEMORY.md` is often near its 2,200-char limit; the tool reports pressure and
+  refuses over-budget writes, but does not automatically compact the live profile.
+- No HTTP server or web UI; the CLI and JSONL are the integration surface.
+- Fine-tuning is not part of v1. [docs/models.md](docs/models.md) records where
+  zero-shot fails before any training work starts.
 
 ## Development
 
@@ -219,22 +303,11 @@ minicpm-dream generate-eval --out evals/generated/gpu-eval --seed 42 --days 10 -
 .venv/bin/python training/build_dataset.py --suite evals/generated/gpu-eval --out training/data/gpu-eval
 ```
 
-`training/README.md` has the GPU LoRA recipe, evaluation command, and acceptance
-gates. Fine-tuning is optional: the optimized zero-shot pipeline already reaches
-cloud-level average quality; use the GPU first for the expanded suite and an 8B
-baseline, then a targeted LoRA only if the floor is still too low.
-
-## Limitations
-
-- A 2B model can still miss a fact, over-compress a quote, or choose a wrong
-  operation. The design turns those failures into rejections or review items,
-  not silent bad memory.
-- English is the primary tested language; MiniCPM is bilingual CN/EN, but other
-  languages need their own eval fixtures.
-- No encryption at rest. The ledger and exports are `0600` in a `0700` directory;
-  use full-disk encryption if that matters.
-- Fine-tuning is not part of v1. `docs/models.md` records where zero-shot fails
-  before any training work starts.
+[training/README.md](training/README.md) has the GPU LoRA recipe, evaluation
+command and acceptance gates. Fine-tuning is optional: the optimised zero-shot
+pipeline already reaches cloud-level average quality; use the GPU first for the
+expanded suite and an 8B baseline, then a targeted LoRA only if the floor is
+still too low.
 
 ## Contributing and security
 
@@ -242,5 +315,5 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) and [SECURITY.md](SECURITY.md).
 
 ## License
 
-Code: MIT. Model weights are downloaded separately under their own licenses;
-see `NOTICE`. This is a community project, not affiliated with OpenBMB.
+Code: MIT. Model weights are downloaded separately under their own licenses; see
+[NOTICE](NOTICE). This is a community project, not affiliated with OpenBMB.

@@ -1,4 +1,4 @@
-"""minicpm-dream: local MiniCPM memory consolidation for agent harnesses."""
+"""Nightly memory consolidation for AI agents, on your own machine."""
 
 from __future__ import annotations
 
