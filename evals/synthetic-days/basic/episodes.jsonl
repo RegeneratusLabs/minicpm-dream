@@ -1,0 +1,8 @@
+{"session_id": "eval-1", "role": "user", "timestamp": "2026-11-05T09:12:00+10:00", "source": "desktop", "content": "I prefer dark mode in all my editors, it's easier on my eyes."}
+{"session_id": "eval-1", "role": "assistant", "timestamp": "2026-11-05T09:12:20+10:00", "source": "desktop", "content": "Noted — dark mode across your editors."}
+{"session_id": "eval-1", "role": "user", "timestamp": "2026-11-05T09:15:00+10:00", "source": "desktop", "content": "The miniCPM-memory project uses Python 3.12 and SQLite for storage."}
+{"session_id": "eval-1", "role": "assistant", "timestamp": "2026-11-05T09:15:15+10:00", "source": "desktop", "content": "Python 3.12 plus SQLite, got it."}
+{"session_id": "eval-1", "role": "user", "timestamp": "2026-11-05T09:20:00+10:00", "source": "desktop", "content": "Remind me I have the dentist tomorrow at 3pm."}
+{"session_id": "eval-1", "role": "user", "timestamp": "2026-11-05T09:22:00+10:00", "source": "desktop", "content": "Also I no longer use Ollama for local inference."}
+{"session_id": "eval-1", "role": "user", "timestamp": "2026-11-05T09:24:00+10:00", "source": "desktop", "content": "The user is asking about dinner plans."}
+{"session_id": "eval-1", "role": "user", "timestamp": "2026-11-05T09:25:00+10:00", "source": "desktop", "content": "My key is sk-abcdefghijklmnopqrstuvwxyz123456, keep it safe."}

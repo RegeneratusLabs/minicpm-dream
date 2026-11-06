@@ -1,0 +1,20 @@
+{
+  "facts": [
+    {
+      "kind": "preference",
+      "section": "preferences",
+      "text": "Josh prefers dark mode in all editors."
+    },
+    {
+      "kind": "fact",
+      "section": "projects",
+      "text": "The miniCPM-memory project uses Python 3.12 and SQLite for storage."
+    },
+    {
+      "kind": "event",
+      "section": "open_loops",
+      "text": "Josh has a dentist appointment on 2026-11-06.",
+      "valid_from": "2026-11-06"
+    }
+  ]
+}

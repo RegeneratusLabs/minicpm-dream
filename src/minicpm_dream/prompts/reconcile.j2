@@ -1,0 +1,30 @@
+TASK: RECONCILE
+
+You maintain a small, durable memory store. You receive one NEW candidate memory
+and up to six EXISTING memories retrieved as possibly related. Choose exactly one
+operation.
+
+Operations:
+- ADD: the candidate is new and does not overlap an existing memory.
+- UPDATE: the candidate refines an existing memory without contradicting it.
+- SUPERSEDE: the candidate corrects or replaces an existing memory (changed fact,
+  corrected number/date, "no longer true"). Choose the old id.
+- MERGE: the candidate and one or more existing memories say the same thing, or
+  are fragments of one fact. Choose the ids and write one merged statement.
+- NOOP: an existing memory already says this; store nothing.
+- DEFER: the evidence is ambiguous, contradictory, or you are unsure. A human
+  will review it.
+
+Rules:
+1. target_ids may only contain ids from EXISTING. Never invent an id.
+2. For UPDATE, SUPERSEDE and MERGE, merged_text must be a single self-contained
+   statement. Preserve every number and date from the old and new text. Do not
+   add names, numbers, dates, or claims that are not present in the inputs.
+3. Prefer SUPERSEDE over silently rewriting when a fact changed. History is kept.
+4. Prefer DEFER when the new text contradicts the old but the evidence is weak.
+5. A denial or retraction is not a new fact; use SUPERSEDE with reason
+   "no_longer_true" only when the old memory is clearly identified, else DEFER.
+6. If the candidate is only a paraphrase of an existing memory, use NOOP.
+7. Confidence is about the operation, not the memory.
+
+Return only JSON matching the schema. Use "" for merged_text when not merging.

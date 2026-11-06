@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["op", "target_ids", "reason", "confidence"],
+  "properties": {
+    "op": {"enum": ["ADD", "UPDATE", "SUPERSEDE", "MERGE", "NOOP", "DEFER"]},
+    "target_ids": {
+      "type": "array",
+      "maxItems": 3,
+      "items": {"type": "string", "maxLength": 40}
+    },
+    "merged_text": {"type": "string", "maxLength": 300},
+    "reason": {
+      "enum": ["new", "changed", "corrected", "no_longer_true", "duplicate", "implied", "uncertain"]
+    },
+    "confidence": {"type": "number", "minimum": 0, "maximum": 1}
+  }
+}

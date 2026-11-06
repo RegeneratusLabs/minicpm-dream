@@ -1,0 +1,25 @@
+miniCPM-memory / minicpm-dream
+==============================
+
+This is a community project. It is not affiliated with, endorsed by, or
+sponsored by OpenBMB or the MiniCPM team.
+
+Code in this repository is licensed under the MIT License (see LICENSE).
+
+Model weights are downloaded separately and are not distributed with this
+repository. The default model, MiniCPM5-2B, is released by OpenBMB under the
+Apache-2.0 License:
+  https://huggingface.co/openbmb/MiniCPM5-2B
+
+Optional embedding model:
+  BAAI/bge-small-en-v1.5 (MIT)
+  https://huggingface.co/BAAI/bge-small-en-v1.5
+
+llama.cpp is a separate project (MIT):
+  https://github.com/ggml-org/llama.cpp
+
+Hermes Agent is a separate project by Nous Research:
+  https://github.com/NousResearch/hermes-agent
+
+Research and design references are listed in docs/prior-art.md. Quoted findings
+remain the work of their authors.

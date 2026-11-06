@@ -1,0 +1,90 @@
+# Example configuration for minicpm-dream.
+# Copy to ~/.config/minicpm-dream/config.toml, or pass --config.
+
+timezone = "Australia/Brisbane"   # IANA zone; default is detected from the host
+
+[paths]
+# data_dir = "~/.local/share/minicpm-dream"
+# db = ""
+# exports = ""
+# models = ""
+# logs = ""
+# dreams = ""
+# backups = ""
+
+[model]
+name = "minicpm5-2b-q4"           # see `minicpm-dream setup --list-models`
+backend = "llama_cpp"             # llama_cpp | openai | mock
+# llama_server = "/opt/llama.cpp/build/bin/llama-server"
+# model_path = "/models/MiniCPM5-2B-Q4_K_M.gguf"
+# base_url = "http://127.0.0.1:8000/v1"
+# api_key_env = "LOCAL_LLM_KEY"   # name of the env var, never the key
+context = 8192
+threads = 4
+gpu_layers = 0
+temperature = 0.2
+max_tokens = 1200
+timeout_s = 180
+startup_timeout_s = 120
+disable_thinking = true           # MiniCPM5 defaults to reasoning mode; this is extraction
+
+[ingest]
+trusted_sources = ["telegram", "desktop", "tui", "cli", "local"]
+exclude_sources = ["cron", "subagent", "oneshot", "tool"]
+include_tool_messages = false
+max_message_chars = 8000
+max_episode_chars = 8000
+dedupe = true
+
+[extract]
+max_items = 6
+max_chunk_tokens = 6000
+overlap_ratio = 0.1
+temperature = 0.2
+max_tokens = 1200
+verify = true
+verify_max_tokens = 160
+min_confidence = 0.45
+
+[consolidate]
+top_k = 6
+max_changes_per_run = 6
+max_new_per_run = 3
+min_confidence = 0.55
+similarity_threshold = 0.9
+max_calls = 40
+
+[retrieval]
+fts = true
+embeddings = "off"                # "auto" requires the [embeddings] extra
+embedding_model = "BAAI/bge-small-en-v1.5"
+rrf_k = 60
+
+[hermes]
+home = "~/.hermes"
+# state_db = "~/.hermes/state.db"
+memory_file = "memories/MEMORY.md"
+user_file = "memories/USER.md"
+write_mode = "proposals"          # proposals | apply
+memory_char_limit = 2200
+user_char_limit = 1375
+
+[budgets]
+max_minutes = 20
+max_input_tokens = 150000
+max_output_tokens = 40000
+max_episodes = 2000
+
+[privacy]
+store_raw = "none"                # none | redacted | full (redacted == full today)
+redact = true
+screen_injection = true
+drop_redacted = true              # drop turns that contained a secret
+retention_days = 0
+
+[synth]
+# diary_path = ""
+keep_sections = 90
+
+[eval]
+suite = "evals/synthetic-days"

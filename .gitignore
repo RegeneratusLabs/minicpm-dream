@@ -1,0 +1,33 @@
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+dist/
+build/
+*.egg-info/
+
+# local runtime state (never commit private agent data)
+data/
+data-*/
+data-*.json
+models/
+exports/
+backups/
+demo-data/
+eval-data/
+.uv-cache/
+*.db
+*.db-wal
+*.db-shm
+logs/
+*.log
+*.err
+
+# editor / OS
+.DS_Store
+.idea/
+.vscode/

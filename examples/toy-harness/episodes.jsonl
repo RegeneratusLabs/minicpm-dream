@@ -1,0 +1,5 @@
+{"session_id": "toy-1", "role": "user", "timestamp": "2026-11-05T09:00:00+10:00", "source": "desktop", "content": "I prefer dark mode in all my editors, it's easier on my eyes."}
+{"session_id": "toy-1", "role": "assistant", "timestamp": "2026-11-05T09:00:10+10:00", "source": "desktop", "content": "Noted — dark mode across your editors."}
+{"session_id": "toy-1", "role": "user", "timestamp": "2026-11-05T09:05:00+10:00", "source": "desktop", "content": "The miniCPM-memory project uses Python 3.12 and SQLite for storage."}
+{"session_id": "toy-1", "role": "user", "timestamp": "2026-11-05T09:10:00+10:00", "source": "desktop", "content": "Remind me the dentist is tomorrow at 3pm."}
+{"session_id": "toy-1", "role": "user", "timestamp": "2026-11-05T09:12:00+10:00", "source": "desktop", "content": "The user is asking about lunch."}

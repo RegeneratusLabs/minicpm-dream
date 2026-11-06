@@ -1,0 +1,50 @@
+{
+  "extract": [
+    {
+      "items": [
+        {
+          "kind": "preference",
+          "section": "preferences",
+          "text": "Josh prefers dark mode in all editors.",
+          "subject": "Josh",
+          "entities": ["Josh"],
+          "date_ref": "none",
+          "valid_to_ref": "none",
+          "confidence": 0.94,
+          "evidence": [
+            {"episode_id": "ep_unknown", "quote": "I prefer dark mode in all my editors"}
+          ]
+        },
+        {
+          "kind": "fact",
+          "section": "projects",
+          "text": "The miniCPM-memory project uses Python 3.12 and SQLite for storage.",
+          "subject": "miniCPM-memory",
+          "entities": ["miniCPM-memory", "Python 3.12", "SQLite"],
+          "date_ref": "none",
+          "valid_to_ref": "none",
+          "confidence": 0.93,
+          "evidence": [
+            {
+              "episode_id": "ep_unknown",
+              "quote": "The miniCPM-memory project uses Python 3.12 and SQLite for storage."
+            }
+          ]
+        },
+        {
+          "kind": "event",
+          "section": "open_loops",
+          "text": "Josh has a dentist appointment.",
+          "subject": "dentist",
+          "entities": ["Josh"],
+          "date_ref": "d0",
+          "valid_to_ref": "none",
+          "confidence": 0.9,
+          "evidence": [
+            {"episode_id": "ep_unknown", "quote": "dentist tomorrow at 3pm"}
+          ]
+        }
+      ]
+    }
+  ]
+}
