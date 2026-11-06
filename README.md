@@ -1,5 +1,7 @@
 # minicpm-dream
 
+[![ci](https://github.com/RegeneratusLabs/minicpm-dream/actions/workflows/ci.yml/badge.svg)](https://github.com/RegeneratusLabs/minicpm-dream/actions/workflows/ci.yml)
+
 **Your agent forgets the day. This gives it back.**
 
 An agent is good at the conversation in front of it and bad at everything before
