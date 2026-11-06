@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 from ..config import ExtractCfg, IngestCfg
 from ..ingest.base import Episode
-from ..util.text import truncate
+from ..util.text import split_sentences, truncate
 from .timeanchor import DateRef, render_refs, resolve_dates
 
 
@@ -32,6 +32,46 @@ def estimate_tokens(text: str) -> int:
 def render_episode(ep: Episode, *, max_chars: int = 8000) -> str:
     text = truncate(ep.text, max_chars)
     return f"[ep:{ep.id}] {ep.spoken_at_local} {ep.role}: {text}"
+
+
+def split_episode(ep: Episode, *, budget_tokens: int) -> list[Episode]:
+    """Split a long turn into overlapping sentence windows.
+
+    A single 7K-character assistant answer otherwise exceeds the model's useful
+    prompt size and is truncated; splitting preserves the tail.
+    """
+    target_chars = max(600, int(budget_tokens * 3.5 * 0.85))
+    if len(ep.text) <= target_chars:
+        return [ep]
+    sentences = split_sentences(ep.text)
+    if not sentences:
+        sentences = [ep.text]
+    segments: list[str] = []
+    current: list[str] = []
+    size = 0
+    for sentence in sentences:
+        addition = len(sentence) + 1
+        if current and size + addition > target_chars:
+            segments.append(" ".join(current))
+            current = [current[-1]] if len(current) > 1 else []
+            size = sum(len(item) + 1 for item in current)
+        current.append(sentence)
+        size += addition
+    if current:
+        segments.append(" ".join(current))
+    out: list[Episode] = []
+    for index, segment in enumerate(segments):
+        if not segment.strip():
+            continue
+        out.append(
+            replace(
+                ep,
+                id=f"{ep.id}-p{index}",
+                text=segment,
+                meta={**ep.meta, "parent_episode_id": ep.id, "segment": index},
+            )
+        )
+    return out or [ep]
 
 
 def build_chunks(
@@ -75,7 +115,20 @@ def build_chunks(
             )
         )
 
+    if extract.split_long_messages:
+        prepared: list[Episode] = []
+        for ep in episodes:
+            if estimate_tokens(ep.text) > budget:
+                prepared.extend(split_episode(ep, budget_tokens=budget))
+            else:
+                prepared.append(ep)
+        episodes = prepared
+
     for ep in episodes:
+        if current and extract.chunk_by_session and ep.session_id != current[-1].session_id:
+            flush()
+            current = []
+            current_tokens = 0
         rendered = render_episode(ep, max_chars=ingest.max_episode_chars)
         ep_tokens = estimate_tokens(rendered)
         if current and current_tokens + ep_tokens > budget:

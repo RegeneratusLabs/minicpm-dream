@@ -10,7 +10,7 @@ from ..backends.base import Backend, BackendError, extract_json
 from ..config import ConsolidateCfg
 from ..extract.schema import load_schema, prompt_version, render_prompt
 from ..extract.validate import Candidate
-from ..util.text import digits, norm_key
+from ..util.text import containment, digits, norm_key
 from .dedupe import exact_duplicate, near_duplicate, same_fact_different_numbers
 
 PROMPT = "reconcile.j2"
@@ -76,6 +76,19 @@ def _precheck(candidate: Candidate, rows: list[dict[str, Any]], cfg: Consolidate
                 rationale="exact normalized text already stored",
             )
     for row in rows:
+        if (
+            containment(candidate.text, str(row.get("text", ""))) >= 0.9
+            and digits(candidate.text) <= digits(str(row.get("text", "")))
+        ):
+            return Decision(
+                candidate=candidate,
+                op="NOOP",
+                target_ids=[row["id"]],
+                reason="duplicate",
+                confidence=0.9,
+                rationale="candidate is already contained in an existing memory",
+            )
+    for row in rows:
         if same_fact_different_numbers(candidate, row):
             return None  # let the model decide SUPERSEDE vs UPDATE
         if near_duplicate(candidate, row, cfg.similarity_threshold):
@@ -85,6 +98,13 @@ def _precheck(candidate: Candidate, rows: list[dict[str, Any]], cfg: Consolidate
                 return Decision(candidate, "NOOP", [row["id"]], "", "duplicate", 0.95,
                                 "near-identical duplicate")
     return None
+
+
+_CAP = re.compile(r"\b[A-Z][A-Za-z0-9_-]{2,}\b")
+
+
+def _names(text: str) -> set[str]:
+    return {m.group(0) for m in _CAP.finditer(text) if m.group(0) not in {"The", "This", "That", "User"}}
 
 
 def validate_decision(
@@ -109,6 +129,31 @@ def validate_decision(
         decision.errors.append(f"invalid reason {decision.reason!r}")
     if decision.op == "SUPERSEDE" and decision.reason == "new":
         decision.errors.append("SUPERSEDE cannot use reason 'new'")
+
+    by_id = {str(row["id"]): row for row in rows}
+    final_text = decision.final_text
+    for target in decision.target_ids:
+        target_row = by_id.get(target)
+        if target_row is None:
+            continue
+        target_text = str(target_row.get("text", ""))
+        target_section = str(target_row.get("section", ""))
+        if decision.op in {"UPDATE", "MERGE"} and target_section != candidate.section:
+            decision.errors.append("cross-section update would rewrite a different kind of memory")
+        if decision.op == "SUPERSEDE" and target_section != candidate.section:
+            if containment(final_text, target_text) < 0.55:
+                decision.errors.append("cross-section supersede lacks enough shared content")
+        if target_section == "identity":
+            names = _names(final_text) & _names(target_text)
+            if len(names) < 2 and target_text.casefold() not in final_text.casefold():
+                decision.errors.append("identity update would drop the person's name")
+        overlap = containment(target_text, final_text)
+        if decision.op in {"UPDATE", "SUPERSEDE"} and overlap < 0.4:
+            decision.errors.append("new text would drop most of the target memory")
+        if target_row.get("origin") == "inferred" and candidate.origin != "derived" and overlap < 0.6:
+            decision.errors.append("model candidate would overwrite a deterministic fact")
+        if decision.op == "MERGE" and overlap < 0.4:
+            decision.errors.append("merge would drop most of a target memory")
 
     text = decision.final_text
     if len(text) < 3 or len(text) > 300:

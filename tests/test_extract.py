@@ -87,7 +87,7 @@ def test_verify_uses_the_verifier():
                 {
                     "items": [
                         _item(
-                            "Josh prefers dark mode.",
+                            "Alice prefers dark mode.",
                             "I prefer dark mode",
                             kind="preference",
                             section="preferences",

@@ -1,5 +1,6 @@
 """Synthesis, export and write-back."""
 
+from .compaction import consolidate_active
 from .exports import (
     ExportBundle,
     build_and_write,
@@ -23,6 +24,7 @@ __all__ = [
     "apply_review_actions",
     "as_memory_tool_calls",
     "build_and_write",
+    "consolidate_active",
     "build_bundle",
     "check_char_budget",
     "check_loss",

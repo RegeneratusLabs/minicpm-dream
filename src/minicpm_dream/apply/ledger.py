@@ -122,6 +122,94 @@ def _record_op(
     return op_id
 
 
+def apply_one(
+    store: Store,
+    decision: Decision,
+    *,
+    run_id: str,
+    model: str = "",
+    result: ApplyResult | None = None,
+) -> ApplyResult:
+    """Apply one decision. Caller owns the transaction and loss guard."""
+    result = result or ApplyResult()
+    cand = decision.candidate
+    problems = check_memory_text(decision.final_text)
+    if problems:
+        decision.errors.extend(problems)
+        decision.requires_review = True
+    if decision.errors:
+        pid = store.add_proposal(
+            run_id=run_id,
+            kind="review",
+            target="ledger",
+            payload=_candidate_payload(decision),
+            cooldown_days=3,
+        )
+        result.proposals.append(pid)
+        result.deferred.append(_candidate_payload(decision))
+        _record_op(
+            store, run_id=run_id, op=decision.op, targets=decision.target_ids,
+            payload=_candidate_payload(decision), decision=decision, applied=False,
+        )
+        return result
+
+    if decision.op == "NOOP":
+        _record_op(
+            store, run_id=run_id, op="NOOP", targets=decision.target_ids,
+            payload=_candidate_payload(decision), decision=decision, applied=False,
+        )
+        result.applied.append({"op": "NOOP", "candidate": cand.text})
+        return result
+    if decision.op == "DEFER":
+        pid = store.add_proposal(
+            run_id=run_id,
+            kind="review",
+            target="ledger",
+            payload=_candidate_payload(decision),
+            cooldown_days=3,
+        )
+        result.proposals.append(pid)
+        result.deferred.append(_candidate_payload(decision))
+        _record_op(
+            store, run_id=run_id, op="DEFER", targets=decision.target_ids,
+            payload=_candidate_payload(decision), decision=decision, applied=False,
+        )
+        return result
+
+    if decision.op in {"UPDATE", "SUPERSEDE", "MERGE"}:
+        for target in decision.target_ids:
+            store.supersede(target, valid_to=cand.valid_from or iso_utc(utc_now())[:10])
+
+    mid = store.insert_memory(
+        kind=cand.kind,
+        section=cand.section,
+        text=decision.final_text,
+        evidence=[ev.__dict__ for ev in cand.evidence],
+        subject=cand.subject,
+        entities=cand.entities,
+        valid_from=cand.valid_from,
+        valid_to=cand.valid_to,
+        confidence=decision.confidence,
+        salience=salience(decision),
+        origin="inferred" if cand.origin == "derived" else "said",
+        created_by="slm",
+        model=model,
+        prompt_version=decision.prompt_version,
+        supersedes_id=decision.target_ids[0] if decision.target_ids else None,
+        run_id=run_id,
+    )
+    result.memory_ids.append(mid)
+    result.applied.append(
+        {"op": decision.op, "memory_id": mid, "text": decision.final_text,
+         "targets": decision.target_ids}
+    )
+    _record_op(
+        store, run_id=run_id, op=decision.op, targets=decision.target_ids,
+        payload=_candidate_payload(decision), decision=decision, applied=True,
+    )
+    return result
+
+
 def apply_decisions(
     store: Store,
     decisions: list[Decision],
@@ -135,81 +223,7 @@ def apply_decisions(
     before = snapshot(store)
     with store.transaction():
         for decision in decisions:
-            cand = decision.candidate
-            problems = check_memory_text(decision.final_text)
-            if problems:
-                decision.errors.extend(problems)
-                decision.requires_review = True
-            if decision.errors:
-                pid = store.add_proposal(
-                    run_id=run_id,
-                    kind="review",
-                    target="ledger",
-                    payload=_candidate_payload(decision),
-                    cooldown_days=3,
-                )
-                result.proposals.append(pid)
-                result.deferred.append(_candidate_payload(decision))
-                _record_op(
-                    store, run_id=run_id, op=decision.op, targets=decision.target_ids,
-                    payload=_candidate_payload(decision), decision=decision, applied=False,
-                )
-                continue
-
-            if decision.op == "NOOP":
-                _record_op(
-                    store, run_id=run_id, op="NOOP", targets=decision.target_ids,
-                    payload=_candidate_payload(decision), decision=decision, applied=False,
-                )
-                result.applied.append({"op": "NOOP", "candidate": cand.text})
-                continue
-            if decision.op == "DEFER":
-                pid = store.add_proposal(
-                    run_id=run_id,
-                    kind="review",
-                    target="ledger",
-                    payload=_candidate_payload(decision),
-                    cooldown_days=3,
-                )
-                result.proposals.append(pid)
-                result.deferred.append(_candidate_payload(decision))
-                _record_op(
-                    store, run_id=run_id, op="DEFER", targets=decision.target_ids,
-                    payload=_candidate_payload(decision), decision=decision, applied=False,
-                )
-                continue
-
-            if decision.op in {"UPDATE", "SUPERSEDE", "MERGE"}:
-                for target in decision.target_ids:
-                    store.supersede(target, valid_to=cand.valid_from or iso_utc(utc_now())[:10])
-
-            mid = store.insert_memory(
-                kind=cand.kind,
-                section=cand.section,
-                text=decision.final_text,
-                evidence=[ev.__dict__ for ev in cand.evidence],
-                subject=cand.subject,
-                entities=cand.entities,
-                valid_from=cand.valid_from,
-                valid_to=cand.valid_to,
-                confidence=decision.confidence,
-                salience=salience(decision),
-                origin="said",
-                created_by="slm",
-                model=model,
-                prompt_version=decision.prompt_version,
-                supersedes_id=decision.target_ids[0] if decision.target_ids else None,
-                run_id=run_id,
-            )
-            result.memory_ids.append(mid)
-            result.applied.append(
-                {"op": decision.op, "memory_id": mid, "text": decision.final_text,
-                 "targets": decision.target_ids}
-            )
-            _record_op(
-                store, run_id=run_id, op=decision.op, targets=decision.target_ids,
-                payload=_candidate_payload(decision), decision=decision, applied=True,
-            )
+            apply_one(store, decision, run_id=run_id, model=model, result=result)
         after_counts = store.counts()
         after = {
             "entries": int(after_counts.get("active", 0)),
@@ -222,12 +236,11 @@ def apply_decisions(
     result.counts = store.counts()
     return result
 
-
 def serialize_decisions(decisions: list[Decision]) -> list[dict[str, Any]]:
     out = []
     for d in decisions:
         payload = _candidate_payload(d)
         if has_secret(json.dumps(payload)):
-            payload["candidate"]["evidence"] = []
+            payload["evidence"] = []
         out.append(payload)
     return out

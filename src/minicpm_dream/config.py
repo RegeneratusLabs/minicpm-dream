@@ -101,13 +101,27 @@ class IngestCfg:
 @dataclass
 class ExtractCfg:
     max_items: int = 6
-    max_chunk_tokens: int = 6000
+    max_chunk_tokens: int = 1500
     overlap_ratio: float = 0.1
+    chunk_by_session: bool = True
+    split_long_messages: bool = True
     temperature: float = 0.2
     max_tokens: int = 1200
     verify: bool = True
     verify_max_tokens: int = 160
+    verify_lenient: bool = True
     min_confidence: float = 0.45
+    coverage_pass: bool = False
+    coverage_max_items: int = 4
+    message_fallback: bool = True
+    message_fallback_max_messages: int = 20
+    message_fallback_min_chars: int = 10
+    message_fallback_uncited_only: bool = False
+    message_fallback_include_assistant: bool = False
+    message_fallback_max_items: int = 3
+    message_fallback_max_tokens: int = 400
+    profile_pass: bool = False
+    profile_max_items: int = 8
 
 
 @dataclass

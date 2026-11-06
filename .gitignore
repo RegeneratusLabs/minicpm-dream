@@ -19,7 +19,7 @@ spark-*.json
 models/
 exports/
 backups/
-demo-data/
+demo-data*/
 eval-data/
 .uv-cache/
 *.db

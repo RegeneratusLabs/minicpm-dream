@@ -11,7 +11,13 @@ from ..ingest.redact import has_secret
 from ..prepare.chunk import Chunk
 from ..prepare.timeanchor import has_relative_time
 from ..util.ids import stable_hash, stable_id
-from ..util.text import is_probably_meta, is_retraction, normalize_text, quote_in_source
+from ..util.text import (
+    is_probably_meta,
+    is_retraction,
+    is_status_echo,
+    normalize_text,
+    quote_in_source,
+)
 
 KINDS = {"fact", "event", "preference", "task", "decision", "self", "question"}
 _TASK_CUES = re.compile(
@@ -67,6 +73,7 @@ class Candidate:
     prompt_version: str = "extract@1"
     valid_from: str | None = None
     valid_to: str | None = None
+    origin: str = "slm"
     rejected_reasons: list[str] = field(default_factory=list)
 
     @property
@@ -90,13 +97,24 @@ def normalize_section(kind: str, section: str, text: str = "") -> str:
     forced = _SECTION_FOR_KIND.get(kind)
     if forced:
         return forced
-    if kind == "preference":
-        return "identity" if section == "identity" else "preferences"
     if kind == "self":
         return section if section in {"procedures", "lessons"} else "lessons"
     if kind == "decision":
         return section if section in {"projects", "procedures", "lessons", "open_loops"} else "projects"
     low = text.casefold()
+    if kind in {"fact", "preference"}:
+        if re.search(r"\b(cron|script|command|config|must live|have to live|workflow)\b", low):
+            return "procedures"
+        if re.search(r"\b(unreliable|verify|pitfall|lesson|subagent claims)\b", low):
+            return "lessons"
+        if re.search(r"\b(favou?rite|prefers?|likes?|dislikes?|hates?)\b", low):
+            return "preferences"
+        if "~/." in text or re.search(r"\b(ubuntu|optiplex|homelab|ram|server|host)\b", low):
+            return "environment"
+        if re.search(r"\b(project|ledger|database|postgres|sqlite|minicpm|python)\b", low):
+            return "projects"
+    if kind == "preference":
+        return "identity" if section == "identity" else "preferences"
     if section in {"preferences", "projects", "environment", "procedures"}:
         if re.search(r"\b(cron|script|command|config|cli|workflow|must live|have to live)\b", low):
             return "procedures"
@@ -195,6 +213,8 @@ def validate_item(item: dict[str, Any], chunk: Chunk) -> tuple[Candidate | None,
         errors.append("conversational meta-state")
     if is_retraction(text):
         errors.append("retraction is not a new fact")
+    if is_status_echo(text):
+        errors.append("status echo is not a durable fact")
     if has_secret(text):
         errors.append("secret-shaped text")
 
@@ -311,15 +331,39 @@ def validate_item(item: dict[str, Any], chunk: Chunk) -> tuple[Candidate | None,
 
 
 def dedupe_candidates(candidates: list[Candidate]) -> list[Candidate]:
-    from ..util.text import jaccard
+    from ..util.text import containment, jaccard
 
     kept: list[Candidate] = []
-    for cand in sorted(candidates, key=lambda c: c.confidence, reverse=True):
-        if any(
-            cand.text.casefold() == other.text.casefold()
-            or jaccard(cand.text, other.text) >= 0.92
-            for other in kept
-        ):
-            continue
-        kept.append(cand)
+    for cand in sorted(candidates, key=lambda c: (len(c.text), c.confidence), reverse=True):
+        duplicate = False
+        for index, other in enumerate(kept):
+            same = cand.text.casefold() == other.text.casefold()
+            similar = jaccard(cand.text, other.text) >= 0.92
+            contained = (
+                containment(cand.text, other.text) >= 0.9
+                or containment(other.text, cand.text) >= 0.9
+            )
+            if same or similar or contained:
+                # Deterministic facts win over model phrasing; otherwise keep the
+                # richer item. Evidence is merged so provenance is not lost.
+                prefer_candidate = cand.origin == "derived" and other.origin != "derived"
+                if not prefer_candidate and other.origin == "derived" and cand.origin != "derived":
+                    prefer_candidate = False
+                elif not prefer_candidate:
+                    prefer_candidate = len(cand.text) > len(other.text)
+                if prefer_candidate:
+                    known = {(e.episode_id, e.quote) for e in cand.evidence}
+                    for ev in other.evidence:
+                        if (ev.episode_id, ev.quote) not in known:
+                            cand.evidence.append(ev)
+                    kept[index] = cand
+                elif cand.evidence:
+                    known = {(e.episode_id, e.quote) for e in other.evidence}
+                    for ev in cand.evidence:
+                        if (ev.episode_id, ev.quote) not in known:
+                            other.evidence.append(ev)
+                duplicate = True
+                break
+        if not duplicate:
+            kept.append(cand)
     return kept

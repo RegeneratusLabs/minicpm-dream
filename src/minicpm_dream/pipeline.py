@@ -9,13 +9,13 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from .apply import ApplyReport, build_and_write, serialize_decisions, snapshot
+from .apply import ApplyReport, build_and_write, consolidate_active, serialize_decisions, snapshot
 from .apply.exports import build_bundle
-from .apply.ledger import LossGuardError, apply_decisions
+from .apply.ledger import LossGuardError
 from .backends.base import Backend
 from .config import Config
-from .consolidate import apply_budget, reconcile_all
 from .consolidate.reconcile import Decision
+from .consolidate.sequential import reconcile_and_apply
 from .extract import Candidate, extract_all, verify_all
 from .ingest import Episode, EpisodeFilter, HermesAdapter, read_jsonl
 from .prepare import build_chunks
@@ -142,6 +142,7 @@ def run_pass(
         "applied": 0,
         "deferred": 0,
         "proposals": 0,
+        "consolidated": 0,
         "duration_s": 0.0,
     }
     usage: dict[str, Any] = {"extract": {}, "verify": {}, "reconcile": {}}
@@ -210,24 +211,16 @@ def run_pass(
                 accepted = []
 
             retriever = build_retriever(cfg, store, backend_name=backend.name)
-            decisions, reconcile_usage = reconcile_all(
-                backend, accepted, retriever, cfg.consolidate
-            )
-            usage["reconcile"] = reconcile_usage
-            counters["decisions"] = len(decisions)
-            result.decisions = decisions
-
-            budgeted, deferred = apply_budget(decisions, cfg.consolidate)
-            result.decisions = budgeted + deferred
-
             before = snapshot(store)
             try:
-                applied = apply_decisions(
+                decisions, applied, reconcile_usage = reconcile_and_apply(
                     store,
-                    budgeted + deferred,
+                    backend,
+                    accepted,
+                    retriever,
+                    cfg.consolidate,
                     run_id=run_id,
                     model=backend.model,
-                    cfg=cfg.consolidate,
                 )
             except LossGuardError as exc:
                 result.status = "blocked"
@@ -240,7 +233,12 @@ def run_pass(
                 notes.append("ledger transaction rolled back by the loss guard")
                 return result
 
+            usage["reconcile"] = reconcile_usage
+            counters["decisions"] = len(decisions)
+            result.decisions = decisions
             result.loss = applied.loss
+            compaction = consolidate_active(store)
+            counters["consolidated"] = int(compaction.get("archived", 0))
             if retriever is not None:
                 retriever.sync()
             counters["applied"] = len(applied.memory_ids)
@@ -354,7 +352,11 @@ def run_pass(
                 safety={
                     "loss": applied.loss,
                     "filters": filt_stats.as_dict() if filt_stats else {},
-                    "notes": notes,
+                    "notes": notes + (
+                        [f"compacted {counters['consolidated']} duplicate active memories"]
+                        if counters.get("consolidated")
+                        else []
+                    ),
                 },
             )
             if not dry_run:

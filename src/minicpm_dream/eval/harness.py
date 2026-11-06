@@ -111,6 +111,8 @@ def evaluate_case(cfg: Config, backend: Backend, case: Path) -> dict[str, Any]:
                     "matched": hit,
                     "score": round(score, 3),
                     "memory_id": memory.get("id") if memory else None,
+                    "valid_from": fact.get("valid_from"),
+                    "memory_valid_from": memory.get("valid_from") if memory else None,
                 }
             )
             if fact.get("valid_from"):

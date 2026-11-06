@@ -70,12 +70,13 @@ cat ~/.local/share/minicpm-dream/DREAMS.md
 The mock run proves the plumbing. It does not prove model quality; that is what
 `minicpm-dream eval` and `docs/models.md` are for.
 
-**Status:** v0.2.0. Retrieval is the complete OpenBMB stack
-(MiniCPM-Embedding-Light + MiniCPM-Reranker-Light). On the 8-message fixture the
-2B scores 1.0/1.0/1.0; on a denser 24-message / 14-fact day it scores
-P=0.86 / R=0.43 / F1=0.57, versus P=0.92 / R=0.86 / F1=0.89 for DeepSeek Flash.
-That is one synthetic scenario, not a benchmark. Real Hermes validation and the
-fine-tuning decision are in `docs/models.md`.
+**Status:** v0.3.0. Retrieval is the complete OpenBMB stack
+(MiniCPM-Embedding-Light + MiniCPM-Reranker-Light). The optimised 2B pipeline
+now reaches **0.80–0.97 F1** on the 24-message / 14-fact day (best run
+P 0.93 / R 1.00 / F1 0.97 in 334 s), versus **0.81–0.90** for DeepSeek Flash.
+The remaining gap is run-to-run variance, not average quality. Quality mode
+takes ~5–7 minutes on this CPU; `--fast` trades recall for time. See
+[docs/optimizations.md](docs/optimizations.md).
 
 ## Local MiniCPM setup
 
@@ -173,7 +174,7 @@ and the comparison with a cloud model.
 minicpm-dream doctor
 minicpm-dream setup [--download|--check|--list-models]
 minicpm-dream ingest --source hermes --window day --out episodes.jsonl
-minicpm-dream run --source hermes --window day [--dry-run] [--apply-hermes]
+minicpm-dream run --source hermes --window day [--quality|--fast] [--dry-run] [--apply-hermes]
 minicpm-dream review list|show|approve|reject
 minicpm-dream export [--apply-hermes]
 minicpm-dream gate

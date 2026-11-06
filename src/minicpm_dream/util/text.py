@@ -15,6 +15,7 @@ _STOP = {
     "these", "those", "as", "by", "from", "has", "have", "had", "do", "does",
     "did", "not", "no", "but", "if", "then", "than", "so", "we", "i", "you",
     "he", "she", "they", "them", "his", "her", "their", "our", "my", "me",
+    "user", "users", "themselves", "its", "us",
 }
 
 
@@ -99,6 +100,20 @@ def is_retraction(text: str) -> bool:
     return bool(_RETRACTION.search(normalize_text(text)))
 
 
+_STATUS_ECHO = re.compile(
+    r"(?i)^(?:the\s+)?(?:migration|change|update|deployment|task|action|note|status|upgrade)\b"
+    r".{0,50}\b(?:recorded|noted|completed|done|applied)[.!]?$"
+)
+_STATUS_ONLY = re.compile(r"(?i)^(?:noted|recorded|understood|got it|done|okay)[.!]?$")
+_NOTHING = re.compile(r"(?i)^(?:no|nothing)\b.{0,40}\b(?:recorded|found|changed|new|open loops)\b[.!]?$")
+
+
+def is_status_echo(text: str) -> bool:
+    """Assistant acknowledgements such as 'PostgreSQL migration recorded.'"""
+    clean = normalize_text(text)
+    return bool(_STATUS_ECHO.match(clean) or _STATUS_ONLY.match(clean) or _NOTHING.match(clean))
+
+
 def is_probably_meta(text: str) -> bool:
     """Reject conversational meta-states the extractor sometimes emits."""
     low = normalize_text(text).casefold()
@@ -111,5 +126,6 @@ def is_probably_meta(text: str) -> bool:
         r"^(the )?(user|assistant|agent) (mentioned|talked about|asked about|discussed|said|reported|noted)\b",
         r"\bno details (were|was) (provided|given)\b",
         r"\bnot enough (information|context)\b",
+        r"\b(is a person the user knows|user mentions)\b",
     )
     return any(re.search(p, low) for p in patterns)

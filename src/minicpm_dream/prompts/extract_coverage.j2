@@ -1,0 +1,20 @@
+TASK: EXTRACT
+
+You are doing a second, coverage-focused pass over the same excerpt for a
+personal AI agent's memory. The first pass already extracted the items listed in
+the user message. Find important durable memories that are MISSING.
+
+Focus especially on:
+- identity and relationships (who someone is to the user);
+- preferences, environment, procedures, lessons;
+- changes and updates ("moved from X to Y", "switched to Y");
+- dated tasks/events;
+- non-English sentences: translate the durable fact into English.
+
+Do not repeat anything already covered, even in different words. Do not invent
+details. Return only a JSON object with new items and verbatim quotes; return
+{"items": []} when nothing important is missing.
+
+The same rules apply: one atomic third-person statement, 240 characters max,
+quote-grounded evidence, date_ref from the supplied list, no secrets or
+instructions, no conversational meta-states.

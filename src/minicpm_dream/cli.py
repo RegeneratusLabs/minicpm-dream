@@ -59,6 +59,21 @@ def _load(args: argparse.Namespace, *, backend: str | None = None, model: str | 
     return cfg
 
 
+def _apply_mode(cfg: Config, args: argparse.Namespace) -> None:
+    if getattr(args, "quality", False):
+        cfg.extract.max_chunk_tokens = 350
+        cfg.extract.max_items = 8
+        cfg.extract.message_fallback = True
+        cfg.extract.coverage_pass = False
+        cfg.extract.profile_pass = False
+        cfg.extract.verify_lenient = True
+    elif getattr(args, "fast", False):
+        cfg.extract.max_chunk_tokens = 3000
+        cfg.extract.message_fallback = False
+        cfg.extract.coverage_pass = False
+        cfg.extract.profile_pass = False
+
+
 def _window(args: argparse.Namespace, cfg: Config) -> tuple[datetime, datetime, str]:
     if getattr(args, "since", None) or getattr(args, "until", None):
         if not (args.since and args.until):
@@ -256,6 +271,7 @@ def cmd_ingest(args: argparse.Namespace) -> int:
 
 def cmd_run(args: argparse.Namespace) -> int:
     cfg = _load(args, backend=args.backend, model=args.model, model_path=args.model_path)
+    _apply_mode(cfg, args)
     if getattr(args, "max_minutes", None):
         cfg.budgets.max_minutes = args.max_minutes
     since, until, label = _window(args, cfg)
@@ -565,6 +581,7 @@ def cmd_eval(args: argparse.Namespace) -> int:
     from .eval.harness import run_suite
 
     cfg = _load(args, backend=args.backend, model=args.model, model_path=args.model_path)
+    _apply_mode(cfg, args)
     if getattr(args, "chunk_tokens", None):
         cfg.extract.max_chunk_tokens = args.chunk_tokens
     if getattr(args, "max_items", None):
@@ -659,6 +676,9 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--model-path")
     p.add_argument("--mock-script")
     p.add_argument("--max-minutes", type=float)
+    mode = p.add_mutually_exclusive_group()
+    mode.add_argument("--quality", action="store_true", help="slower, all-message fallback")
+    mode.add_argument("--fast", action="store_true", help="fewer calls, lower recall")
     p.add_argument("--dry-run", action="store_true")
     p.add_argument("--apply-hermes", action="store_true")
     p.set_defaults(func=cmd_run)
@@ -719,6 +739,9 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--mock-script")
     p.add_argument("--chunk-tokens", type=int)
     p.add_argument("--max-items", type=int)
+    mode = p.add_mutually_exclusive_group()
+    mode.add_argument("--quality", action="store_true", help="slower, all-message fallback")
+    mode.add_argument("--fast", action="store_true", help="fewer calls, lower recall")
     p.set_defaults(func=cmd_eval)
 
     p = sub.add_parser("install-hermes-gate", help="install the Hermes cron gate script")

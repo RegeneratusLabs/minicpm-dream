@@ -52,6 +52,12 @@ _PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     ("in_month", re.compile(rf"\bin\s+({_MONTH_ALT})\b", re.I)),
     ("month_day", re.compile(rf"\b({_MONTH_ALT})\s+(\d{{1,2}})(?:st|nd|rd|th)?\b", re.I)),
     ("day_month", re.compile(rf"\b(\d{{1,2}})(?:st|nd|rd|th)?\s+(?:of\s+)?({_MONTH_ALT})\b", re.I)),
+    ("next_week", re.compile(r"\bnext week\b", re.I)),
+    ("next_month", re.compile(r"\bnext month\b", re.I)),
+    ("next_year", re.compile(r"\bnext year\b", re.I)),
+    ("this_week", re.compile(r"\bthis week\b", re.I)),
+    ("this_month", re.compile(r"\bthis month\b", re.I)),
+    ("this_year", re.compile(r"\bthis year\b", re.I)),
     ("last_week", re.compile(r"\blast week\b", re.I)),
     ("last_month", re.compile(r"\blast month\b", re.I)),
     ("last_year", re.compile(r"\blast year\b", re.I)),
@@ -151,6 +157,18 @@ def resolve_dates(text: str, spoken_at: datetime, tz: str, *, limit: int = 5) ->
             elif kind == "day_month":
                 month = _MONTHS[match.group(2).lower()]
                 value = _next_month_day(base, month, int(match.group(1)))
+            elif kind == "next_week":
+                value = base + timedelta(weeks=1)
+            elif kind == "next_month":
+                value = _add_months(base, 1)
+            elif kind == "next_year":
+                value = _add_months(base, 12)
+            elif kind == "this_week":
+                value = _weekday_on_or_before(base, 0)
+            elif kind == "this_month":
+                value = base.replace(day=1)
+            elif kind == "this_year":
+                value = base.replace(month=1, day=1)
             elif kind == "last_week":
                 value = base - timedelta(weeks=1)
             elif kind == "last_month":

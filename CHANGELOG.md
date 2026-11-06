@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.3.0 — quality optimisation campaign
+
+- Session-aware chunking, long-turn sentence splitting, and per-message fallback
+  for short user turns, with an empty-message retry.
+- Deterministic derived facts (relationships, migrations, subagent lessons) that
+  bypass LLM reconciliation and are protected from model supersede.
+- Sequential reconcile/apply in one transaction, so later candidates see
+  earlier memories and intra-run updates are handled.
+- Deterministic compaction of duplicates, stale SQLite facts, visiting events,
+  and question echoes, with evidence preservation.
+- Static system prompt for llama.cpp prefix caching; section/kind heuristics;
+  status-echo and meta filters; lenient quote-overlap verification.
+- Destructive-op guards: cross-section rewrites, identity loss, and low-overlap
+  supersede become review proposals.
+- `--quality` / `--fast` modes, 1500-token default chunks, and
+  `docs/optimizations.md` with measured results.
+- Fine-tuning decision recorded: not needed for average quality; GPU use is for
+  an 8B baseline and a targeted LoRA only if the larger suite shows a floor.
+
 ## 0.2.0 — OpenBMB retrieval stack and real-memory validation
 
 - Default retrieval is now the complete OpenBMB stack:

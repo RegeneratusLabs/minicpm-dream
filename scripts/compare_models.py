@@ -103,6 +103,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--local-threads", type=int, default=4)
     parser.add_argument("--chunk-tokens", type=int, default=350)
     parser.add_argument("--max-items", type=int, default=8)
+    parser.add_argument("--coverage", action="store_true")
+    parser.add_argument("--no-fallback", action="store_true")
+    parser.add_argument("--no-verify", action="store_true")
     parser.add_argument("--cloud-base-url", default="https://api.deepseek.com/v1")
     parser.add_argument("--cloud-model", default="deepseek-flash")
     parser.add_argument("--cloud-key-env", default="DEEPSEEK_API_KEY")
@@ -118,6 +121,10 @@ def main(argv: list[str] | None = None) -> int:
     cfg.retrieval.reranker = "off"
     cfg.extract.max_chunk_tokens = args.chunk_tokens
     cfg.extract.max_items = args.max_items
+    cfg.extract.coverage_pass = args.coverage
+    cfg.extract.message_fallback = not args.no_fallback
+    if args.no_verify:
+        cfg.extract.verify = False
 
     reports: dict[str, dict] = {}
     errors: dict[str, str] = {}

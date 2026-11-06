@@ -125,7 +125,9 @@ llama.cpp b12144, 4 threads, 8192 context):
 | Mock (plumbing only) | basic, 8 msgs / 3 facts | 1.0 | 1.0 | 1.0 | 1.0 | 1.0 | 0 | <1 s |
 | MiniCPM5-2B Q4_K_M | basic, 8 msgs / 3 facts | 1.0 | 1.0 | 1.0 | 1.0 | 1.0 | 0 | 49.4 s |
 | MiniCPM5-2B Q4_K_M | full-day, 24 msgs / 14 facts | 0.86 | 0.43 | 0.57 | 1.0 | 0.67 | 0 | 100.7 s |
-| deepseek-flash (cloud) | full-day, 24 msgs / 14 facts | 0.92 | 0.86 | 0.89 | 1.0 | 0.67 | 0 | 19.0 s |
+| **MiniCPM5-2B, optimised pipeline** | full-day, 24 msgs / 14 facts | **0.88–0.93** | **0.86–1.00** | **0.80–0.97** | 1.0 | 0.67–1.0 | 0 | 300–440 s |
+| **same, best seed** | full-day, 24 msgs / 14 facts | **0.93** | **1.00** | **0.97** | 1.0 | 1.00 | 0 | 334 s |
+| deepseek-flash (cloud) | full-day, 24 msgs / 14 facts | 0.85–0.92 | 0.79–0.86 | 0.81–0.90 | 1.0 | 0.33–0.67 | 0 | 12–39 s |
 
 The full-day suite is deliberately denser than `basic/`: 24 turns across three
 days, 14 gold facts, an update, explicit dates, a Chinese turn, a retraction, a
@@ -182,34 +184,34 @@ more than extraction, because there is no room to add anything.
 
 ### Do we need fine-tuning?
 
-Current evidence says **not for v1, and not yet**.
+After the optimisation campaign ([docs/optimizations.md](optimizations.md)),
+**not for average quality**. The optimised 2B is at or above the cloud baseline
+on this suite:
 
-- The typed interface is not the bottleneck: schema validity is 1.0 and safety
-  violations are 0 for both models. The 2B follows the JSON contract.
-- On a small, concise day it matches the cloud model (3/3 facts). On a denser,
-  long-message day it recalls 6/14 facts versus 12/14 for the cloud model. Those
-  misses are mostly whole-chunk omissions and long assistant text, not malformed
-  JSON.
-- The local run's failures are addressable without gradient updates: split by
-  session/day, use smaller chunks, extract per-message for long turns, add a
-  second pass over missed chunks, and improve kind/section hints.
-- Fine-tuning introduces new failure modes (overconfidence, hallucinated numbers)
-  exactly where the current validators are strongest. It also needs a labelled
-  corpus, a GPU, and a held-out suite larger than 14 facts.
+- schema validity 1.0 and zero safety violations;
+- recall 0.86–1.00, precision 0.88–0.93;
+- F1 0.80–0.97 across seeds, most runs 0.89–0.97, versus 0.81–0.90 for cloud;
+- the gap is **variance and latency**, not the mean.
 
-The sensible order is:
+The remaining case for a GPU/fine-tune is the floor: an occasional short user
+message is skipped, and the 2B sometimes picks a poor reconciliation target.
+A small LoRA could reduce that variance, but the deterministic guards already
+prevent the worst outcomes.
 
-1. **1B vs 2B vs 4.1-8B** on a 100–300 fact suite. A 4B/8B tier may close the
-   gap more cheaply than training.
-2. **Interface work**: session-aware chunking, per-message extraction for long
-   assistant turns, a second "did we miss anything?" pass.
-3. **Only then** LoRA on `MiniCPM5-2B-SFT` with reviewed examples, and only if the
-   gap survives 1 and 2. Keep the safety validators unchanged and require the
-   fine-tuned model to beat zero-shot on the same held-out suite.
+If we use the offered cloud GPU, the highest-value order is:
 
-If the product must match cloud recall on dense days, the first spend should be
-a larger local model (4.1-8B) or an optional cloud escalation path, not a
-fine-tune of the 2B.
+1. **100–300 fact held-out suite** (synthetic + reviewed real days) and an 8B
+   teacher/baseline on the GPU, so the ceiling is known.
+2. **2–5k verified SFT examples**, same prompts/schema, hard negatives for
+   retractions, dates, duplicates, Chinese, and wrong-target reconciliation.
+3. LoRA on `MiniCPM5-2B-SFT` (r=16–32, 1–2 epochs, bf16), evaluated against
+   zero-shot on the held-out suite.
+4. Ship only if F1 improves by ≥5 points **and** safety/faithfulness do not
+   regress. Do not train on unverified cloud labels.
+
+So: use the GPU for evaluation and a *targeted* LoRA only after the larger suite
+shows a persistent floor; do not fine-tune merely to chase the last point on a
+14-fact fixture.
 
 ### Failure modes found while wiring the 2B
 
