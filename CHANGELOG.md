@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.4.0 — scalable eval and training scaffold
+
+- `minicpm-dream generate-eval` creates deterministic multi-day suites with
+  gold facts, updates, dates, Chinese turns, noise, injections, and secrets.
+- Labels retain verbatim quotes and final/superseded status for both evaluation
+  and SFT.
+- `training/build_dataset.py` builds extraction and reconciliation JSONL with
+  the exact production prompts/schemas.
+- `training/train_lora.py` provides a plain transformers+peft LoRA loop, plus
+  `training/README.md` with GPU, vLLM evaluation, and acceptance gates.
+- Tests for the generator and dataset builder.
+
 ## 0.3.0 — quality optimisation campaign
 
 - Session-aware chunking, long-turn sentence splitting, and per-message fallback

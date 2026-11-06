@@ -577,6 +577,33 @@ def cmd_index(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_generate_eval(args: argparse.Namespace) -> int:
+    from datetime import date as _date
+
+    from .eval.generate import generate, write_suite
+
+    start = _date.fromisoformat(args.start_date) if args.start_date else None
+    generated = generate(
+        seed=args.seed,
+        days=args.days,
+        facts=args.facts,
+        start_date=start,
+        tz=args.tz or load_config(args.config).timezone,
+    )
+    paths = write_suite(generated, args.out, force=args.force)
+    payload = {
+        "suite": str(Path(args.out).expanduser()),
+        "seed": generated.seed,
+        "days": generated.days,
+        "episodes": len(generated.episodes),
+        "labels": len(generated.labels),
+        "gold_facts": len(generated.facts),
+        "files": paths,
+    }
+    _print(payload, args.json)
+    return 0
+
+
 def cmd_eval(args: argparse.Namespace) -> int:
     from .eval.harness import run_suite
 
@@ -724,6 +751,17 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--archive-days", type=int, default=180)
     p.add_argument("--min-confidence", type=float, default=0.7)
     p.set_defaults(func=cmd_maintain)
+
+    p = sub.add_parser("generate-eval", help="generate a synthetic evaluation suite")
+    _add_common(p)
+    p.add_argument("--out", required=True)
+    p.add_argument("--seed", type=int, default=42)
+    p.add_argument("--days", type=int, default=3)
+    p.add_argument("--facts", type=int, default=30)
+    p.add_argument("--start-date")
+    p.add_argument("--tz")
+    p.add_argument("--force", action="store_true")
+    p.set_defaults(func=cmd_generate_eval)
 
     p = sub.add_parser("index", help="build or refresh OpenBMB memory vectors")
     _add_common(p)

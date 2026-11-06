@@ -1,0 +1,5 @@
+# GPU training extras; not needed for the runtime.
+torch>=2.2
+transformers>=4.50,<5
+peft>=0.12
+accelerate>=0.33

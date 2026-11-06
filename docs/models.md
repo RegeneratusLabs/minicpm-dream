@@ -252,6 +252,9 @@ be judged on both.
 
 ### Next measurements
 
+- Run the generated 100–300 fact suite (`minicpm-dream generate-eval`) and the
+  SFT scaffold in `training/`; the zero-shot result on 14 facts is a regression
+  baseline, not a certification.
 - Expand from 14 to 100–300 gold facts with contradictions, corrections,
   multi-day recurrence, and multilingual turns.
 - MiniCPM5-1B and MiniCPM4.1-8B on the same suite.

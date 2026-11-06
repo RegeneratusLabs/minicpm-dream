@@ -70,7 +70,7 @@ cat ~/.local/share/minicpm-dream/DREAMS.md
 The mock run proves the plumbing. It does not prove model quality; that is what
 `minicpm-dream eval` and `docs/models.md` are for.
 
-**Status:** v0.3.0. Retrieval is the complete OpenBMB stack
+**Status:** v0.4.0. Retrieval is the complete OpenBMB stack
 (MiniCPM-Embedding-Light + MiniCPM-Reranker-Light). The optimised 2B pipeline
 now reaches **0.80–0.97 F1** on the 24-message / 14-fact day (best run
 P 0.93 / R 1.00 / F1 0.97 in 334 s), versus **0.81–0.90** for DeepSeek Flash.
@@ -184,6 +184,7 @@ minicpm-dream forget <memory-id> --yes
 minicpm-dream maintain --archive-days 180
 minicpm-dream index                 # build/refresh OpenBMB memory vectors
 minicpm-dream eval --suite evals/synthetic-days/full-day
+minicpm-dream generate-eval --out evals/generated/my-suite --days 10 --facts 120
 ```
 
 ## Development
@@ -197,6 +198,21 @@ uv run mypy src
 The test suite uses a deterministic mock backend; integration tests that need a
 real model are marked `integration` and skipped when the GGUF/llama-server is
 absent.
+
+## Scaling the evaluation and training
+
+Generate a larger deterministic suite and build SFT data with the production
+prompts:
+
+```bash
+minicpm-dream generate-eval --out evals/generated/gpu-eval --seed 42 --days 10 --facts 120
+.venv/bin/python training/build_dataset.py --suite evals/generated/gpu-eval --out training/data/gpu-eval
+```
+
+`training/README.md` has the GPU LoRA recipe, evaluation command, and acceptance
+gates. Fine-tuning is optional: the optimized zero-shot pipeline already reaches
+cloud-level average quality; use the GPU first for the expanded suite and an 8B
+baseline, then a targeted LoRA only if the floor is still too low.
 
 ## Limitations
 

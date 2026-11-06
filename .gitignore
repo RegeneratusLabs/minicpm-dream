@@ -20,6 +20,9 @@ models/
 exports/
 backups/
 demo-data*/
+training/data/
+training/out/
+evals/generated/
 eval-data/
 .uv-cache/
 *.db
