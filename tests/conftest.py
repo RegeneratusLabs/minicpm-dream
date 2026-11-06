@@ -16,6 +16,9 @@ TZ = "Australia/Brisbane"
 @pytest.fixture
 def cfg(tmp_path) -> Config:
     config = load_config(tmp_path / "missing.toml", data_dir=str(tmp_path / "data"))
+    # Fixtures use Brisbane timestamps; pin the zone so tests do not depend on
+    # the machine's /etc/timezone (CI runs in UTC).
+    config.timezone = TZ
     config.hermes.home = str(tmp_path / "hermes")
     config.resolve()
     (tmp_path / "hermes" / "memories").mkdir(parents=True, exist_ok=True)
