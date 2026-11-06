@@ -55,11 +55,6 @@ def evaluate_case(cfg: Config, backend: Backend, case: Path) -> dict[str, Any]:
         run_cfg.hermes.home = str(Path(td) / "hermes")
         run_cfg.hermes.write_mode = "proposals"
         run_cfg.synth.diary_path = str(Path(td) / "DREAMS.md")
-        # Eval measures extraction/reconciliation quality, not the nightly write budget.
-        run_cfg.consolidate.max_changes_per_run = 100
-        run_cfg.consolidate.max_new_per_run = 100
-        run_cfg.consolidate.max_calls = 100
-        run_cfg.budgets.max_minutes = 30
         run_cfg.resolve()
         (Path(run_cfg.hermes.home) / "memories").mkdir(parents=True, exist_ok=True)
         for name in ("MEMORY.md", "USER.md"):
@@ -70,6 +65,12 @@ def evaluate_case(cfg: Config, backend: Backend, case: Path) -> dict[str, Any]:
             for line in (case / "episodes.jsonl").read_text(encoding="utf-8").splitlines()
             if line.strip()
         ]
+        # Eval measures quality, not the nightly write budget. Scale caps with
+        # the suite so a 100-300 fact run is not silently truncated.
+        run_cfg.consolidate.max_changes_per_run = max(100, len(episodes))
+        run_cfg.consolidate.max_new_per_run = max(100, len(episodes))
+        run_cfg.consolidate.max_calls = max(200, len(episodes) * 4)
+        run_cfg.budgets.max_minutes = max(30.0, len(episodes) * 2.0)
         stamps = [parse_timestamp(item.get("timestamp"), run_cfg.timezone) for item in episodes]
         since = min(stamps).replace(microsecond=0)
         until = max(stamps).replace(microsecond=0)

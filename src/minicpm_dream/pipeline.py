@@ -198,7 +198,11 @@ def run_pass(
             accepted: list[Candidate] = candidates
             if cfg.extract.verify and candidates:
                 accepted, _, verify_usage = verify_all(
-                    backend, candidates, {chunk.index: chunk for chunk in chunks}, cfg.extract
+                    backend,
+                    candidates,
+                    {chunk.index: chunk for chunk in chunks},
+                    cfg.extract,
+                    max_calls=max(60, len(candidates)),
                 )
                 usage["verify"] = verify_usage
                 counters["verified"] = len(accepted)
