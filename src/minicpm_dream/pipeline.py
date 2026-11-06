@@ -14,11 +14,12 @@ from .apply.exports import build_bundle
 from .apply.ledger import LossGuardError, apply_decisions
 from .backends.base import Backend
 from .config import Config
-from .consolidate import Retriever, apply_budget, reconcile_all
+from .consolidate import apply_budget, reconcile_all
 from .consolidate.reconcile import Decision
 from .extract import Candidate, extract_all, verify_all
 from .ingest import Episode, EpisodeFilter, HermesAdapter, read_jsonl
 from .prepare import build_chunks
+from .retrieval.factory import build_retriever
 from .store.db import Store
 from .synth.dream_md import append_section, render_section
 from .util.ids import new_id, stable_hash
@@ -43,6 +44,7 @@ class RunResult:
     dream_path: str = ""
     loss: dict[str, Any] | None = None
     reports: list[dict[str, Any]] = field(default_factory=list)
+    usage: dict[str, Any] = field(default_factory=dict)
     error: str = ""
 
     def as_dict(self) -> dict[str, Any]:
@@ -59,6 +61,7 @@ class RunResult:
             "dream_path": self.dream_path,
             "loss": self.loss,
             "reports": self.reports,
+            "usage": self.usage,
             "error": self.error,
         }
 
@@ -144,6 +147,7 @@ def run_pass(
     usage: dict[str, Any] = {"extract": {}, "verify": {}, "reconcile": {}}
     notes: list[str] = []
     filt_stats: Any = None
+    retriever: Any = None
 
     try:
         with FileLock(cfg.lock_path):
@@ -168,6 +172,7 @@ def run_pass(
                 counters["duration_s"] = round(time.monotonic() - t0, 1)
                 result.status = "empty"
                 result.counters = counters
+                result.usage = usage
                 store.finish_run(run_id, status="empty", counters=counters, usage=usage)
                 return result
 
@@ -204,7 +209,7 @@ def run_pass(
                 notes.append("run budget exhausted before reconciliation; remaining candidates dropped")
                 accepted = []
 
-            retriever = Retriever(store, top_k=cfg.consolidate.top_k)
+            retriever = build_retriever(cfg, store, backend_name=backend.name)
             decisions, reconcile_usage = reconcile_all(
                 backend, accepted, retriever, cfg.consolidate
             )
@@ -230,11 +235,14 @@ def run_pass(
                 result.loss = exc.loss.as_dict() if hasattr(exc.loss, "as_dict") else None
                 counters["duration_s"] = round(time.monotonic() - t0, 1)
                 result.counters = counters
+                result.usage = usage
                 store.finish_run(run_id, status="blocked", counters=counters, usage=usage, error=result.error)
                 notes.append("ledger transaction rolled back by the loss guard")
                 return result
 
             result.loss = applied.loss
+            if retriever is not None:
+                retriever.sync()
             counters["applied"] = len(applied.memory_ids)
             counters["deferred"] = len(applied.deferred)
             counters["proposals"] = len(applied.proposals)
@@ -306,6 +314,15 @@ def run_pass(
                 )
             result.bundle = bundle.as_review()
             result.export_paths = export_paths
+            pressure = bundle.pressure or {}
+            if any(float((value or {}).get("fill", 0)) >= 0.85 for value in pressure.values()) or bundle.skipped:
+                notes.append(
+                    "memory pressure: "
+                    + ", ".join(
+                        f"{target} {value.get('chars', 0)}/{value.get('limit', 0)}"
+                        for target, value in pressure.items()
+                    )
+                )
 
             reports: list[ApplyReport] = []
             if apply_hermes and not dry_run:
@@ -348,6 +365,7 @@ def run_pass(
 
             counters["duration_s"] = round(time.monotonic() - t0, 1)
             result.counters = counters
+            result.usage = usage
             result.status = "ok"
             store.finish_run(run_id, status="ok", counters=counters, usage=usage)
             return result
@@ -356,6 +374,7 @@ def run_pass(
         result.status = "failed"
         result.error = str(exc)
         result.counters = counters
+        result.usage = usage
         try:
             store.finish_run(run_id, status="failed", counters=counters, usage=usage, error=str(exc))
         except Exception:  # noqa: BLE001
@@ -363,6 +382,8 @@ def run_pass(
         log.exception("run failed")
         raise
     finally:
+        if retriever is not None:
+            retriever.close()
         store.close()
         if temp_db is not None:
             for suffix in ("", "-wal", "-shm"):

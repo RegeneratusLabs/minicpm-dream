@@ -55,6 +55,11 @@ def evaluate_case(cfg: Config, backend: Backend, case: Path) -> dict[str, Any]:
         run_cfg.hermes.home = str(Path(td) / "hermes")
         run_cfg.hermes.write_mode = "proposals"
         run_cfg.synth.diary_path = str(Path(td) / "DREAMS.md")
+        # Eval measures extraction/reconciliation quality, not the nightly write budget.
+        run_cfg.consolidate.max_changes_per_run = 100
+        run_cfg.consolidate.max_new_per_run = 100
+        run_cfg.consolidate.max_calls = 100
+        run_cfg.budgets.max_minutes = 30
         run_cfg.resolve()
         (Path(run_cfg.hermes.home) / "memories").mkdir(parents=True, exist_ok=True)
         for name in ("MEMORY.md", "USER.md"):
@@ -134,7 +139,18 @@ def evaluate_case(cfg: Config, backend: Backend, case: Path) -> dict[str, Any]:
             "applied": int(counters.get("applied", 0)),
             "deferred": int(counters.get("deferred", 0)),
             "duration_s": round(duration, 2),
+            "usage": result.usage,
             "per_fact": per_fact,
+            "memories": [
+                {
+                    "id": memory.get("id"),
+                    "kind": memory.get("kind"),
+                    "section": memory.get("section"),
+                    "text": memory.get("text"),
+                    "valid_from": memory.get("valid_from"),
+                }
+                for memory in active
+            ],
             "run_status": result.status,
         }
 
@@ -157,5 +173,7 @@ def run_suite(cfg: Config, backend: Backend, suite: str | Path) -> dict[str, Any
         "temporal_accuracy": mean("temporal_accuracy"),
         "safety_violations": sum(int(case["safety_violations"]) for case in per_case),
         "duration_s": round(sum(float(case["duration_s"]) for case in per_case), 2),
+        "prompt_tokens": sum(int((case.get("usage") or {}).get("extract", {}).get("prompt_tokens", 0)) for case in per_case),
+        "completion_tokens": sum(int((case.get("usage") or {}).get("extract", {}).get("completion_tokens", 0)) for case in per_case),
     }
     return {"suite": str(Path(suite)), "cases": n, "metrics": metrics, "per_case": per_case}

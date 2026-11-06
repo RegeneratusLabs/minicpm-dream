@@ -20,6 +20,8 @@ from .config import Config, load_config
 from .ingest import HermesAdapter
 from .models import MODELS, download_model, get_spec, human_size, model_status, resolve_model_path
 from .pipeline import collect_episodes, run_pass
+from .retrieval.factory import build_retriever
+from .retrieval.openbmb import cache_status, download_models
 from .store.db import Store
 from .util.atomic import ensure_dir, write_text_atomic
 from .util.logging import setup_logging
@@ -36,6 +38,7 @@ from .util.timeutil import (
 def _add_common(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--config", help="path to config.toml")
     parser.add_argument("--data-dir", help="override the data directory")
+    parser.add_argument("--hermes-home", help="override the Hermes home (memories, state.db)")
     parser.add_argument("--verbose", action="store_true", help="debug logging")
     parser.add_argument("--json", action="store_true", help="machine-readable output")
 
@@ -49,6 +52,9 @@ def _load(args: argparse.Namespace, *, backend: str | None = None, model: str | 
         cfg.model.name = model
     if model_path:
         cfg.model.model_path = str(Path(model_path).expanduser())
+    if getattr(args, "hermes_home", None):
+        cfg.hermes.home = str(Path(args.hermes_home).expanduser())
+        cfg.resolve()
     setup_logging(getattr(args, "verbose", False), Path(cfg.paths.logs) / "minicpm-dream.log")
     return cfg
 
@@ -131,6 +137,21 @@ def cmd_doctor(args: argparse.Namespace) -> int:
     else:
         checks.append(("backend", True, cfg.model.backend))
 
+    if cfg.retrieval.embeddings == "openbmb" or cfg.retrieval.reranker == "openbmb":
+        import importlib.util as _ilu
+
+        deps = all(_ilu.find_spec(name) is not None for name in ("torch", "transformers", "numpy"))
+        checks.append(("openbmb deps", deps, "torch + transformers + numpy" if deps else "install .[openbmb]"))
+        if deps:
+            embedding_cache = cache_status(cfg.retrieval.embedding_model)
+            reranker_cache = cache_status(cfg.retrieval.reranker_model)
+            checks.append(
+                ("embedding model", embedding_cache not in {"not cached", "unknown"}, embedding_cache)
+            )
+            checks.append(
+                ("reranker model", reranker_cache not in {"not cached", "unknown"}, reranker_cache)
+            )
+
     hermes = HermesAdapter(cfg)
     info = hermes.inspect()
     checks.append(("hermes state.db", info.available, info.note or str(info.path)))
@@ -175,7 +196,21 @@ def cmd_setup(args: argparse.Namespace) -> int:
     if args.check:
         status = model_status(cfg)
         print(json.dumps(status, indent=2) if args.json else _human(status)[0])
+        if cfg.retrieval.embeddings == "openbmb":
+            print(f"embedding: {cache_status(cfg.retrieval.embedding_model)}")
+            print(f"reranker:  {cache_status(cfg.retrieval.reranker_model)}")
         return 0 if status.get("ok") else 1
+    if args.download_embeddings:
+        try:
+            paths = download_models(
+                cfg.retrieval.embedding_model, cfg.retrieval.reranker_model
+            )
+        except Exception as exc:  # noqa: BLE001
+            print(f"error: {exc}", file=sys.stderr)
+            return 1
+        for repo, repo_path in paths.items():
+            print(f"{repo}: {repo_path}")
+        return 0
     if not args.download:
         print(f"model: {spec.key}")
         print(f"path:  {path}")
@@ -354,6 +389,7 @@ def cmd_export(args: argparse.Namespace) -> int:
             "user_chars": len(bundle.user_text),
             "limits": bundle.limits,
             "skipped": bundle.skipped,
+            "pressure": bundle.pressure,
         }
         if args.apply_hermes:
             if cfg.hermes.write_mode != "apply":
@@ -372,6 +408,7 @@ def cmd_gate(args: argparse.Namespace) -> int:
     pending = 0
     blocked = 0
     actions = 0
+    pressure = False
     if not Path(cfg.paths.db).is_file():
         print(
             json.dumps(
@@ -396,15 +433,21 @@ def cmd_gate(args: argparse.Namespace) -> int:
     review = cfg.exports_dir / "review.json"
     if review.is_file():
         try:
-            actions = len(json.loads(review.read_text(encoding="utf-8")).get("actions", []))
+            payload = json.loads(review.read_text(encoding="utf-8"))
+            actions = len(payload.get("actions", []))
+            pressure = bool(payload.get("skipped")) or any(
+                float((value or {}).get("fill", 0)) >= 0.85
+                for value in (payload.get("pressure") or {}).values()
+            )
         except (OSError, json.JSONDecodeError):
             actions = 0
-    wake = pending > 0 or actions > 0 or blocked > 0
+    wake = pending > 0 or actions > 0 or blocked > 0 or pressure
     payload = {
         "wakeAgent": wake,
         "context": {
             "pending_proposals": pending,
             "review_actions": actions,
+            "memory_pressure": pressure,
             "blocked_runs_24h": blocked,
             "review_path": str(review),
         },
@@ -497,10 +540,35 @@ def cmd_maintain(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_index(args: argparse.Namespace) -> int:
+    cfg = _load(args)
+    with Store(cfg.paths.db) as store:
+        if args.rebuild:
+            store.clear_vectors(model=cfg.retrieval.embedding_model)
+        retriever = build_retriever(cfg, store, backend_name="cli", sync=False)
+        try:
+            added = retriever.sync()
+            count = retriever.index.count() if retriever.index is not None else 0
+        finally:
+            retriever.close()
+    payload = {
+        "embedding_model": cfg.retrieval.embedding_model,
+        "vectors": count,
+        "added": added,
+        "rebuild": bool(args.rebuild),
+    }
+    _print(payload, args.json)
+    return 0
+
+
 def cmd_eval(args: argparse.Namespace) -> int:
     from .eval.harness import run_suite
 
     cfg = _load(args, backend=args.backend, model=args.model, model_path=args.model_path)
+    if getattr(args, "chunk_tokens", None):
+        cfg.extract.max_chunk_tokens = args.chunk_tokens
+    if getattr(args, "max_items", None):
+        cfg.extract.max_items = args.max_items
     backend = make_backend(cfg, mock_script=args.mock_script)
     try:
         report = run_suite(cfg, backend, suite=args.suite or cfg.eval.suite)
@@ -558,6 +626,7 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("setup", help="inspect or download the MiniCPM model")
     _add_common(p)
     p.add_argument("--download", action="store_true")
+    p.add_argument("--download-embeddings", action="store_true")
     p.add_argument("--check", action="store_true")
     p.add_argument("--list-models", action="store_true")
     p.add_argument("--model")
@@ -636,6 +705,11 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--min-confidence", type=float, default=0.7)
     p.set_defaults(func=cmd_maintain)
 
+    p = sub.add_parser("index", help="build or refresh OpenBMB memory vectors")
+    _add_common(p)
+    p.add_argument("--rebuild", action="store_true")
+    p.set_defaults(func=cmd_index)
+
     p = sub.add_parser("eval", help="run an evaluation suite")
     _add_common(p)
     p.add_argument("--suite")
@@ -643,6 +717,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--model")
     p.add_argument("--model-path")
     p.add_argument("--mock-script")
+    p.add_argument("--chunk-tokens", type=int)
+    p.add_argument("--max-items", type=int)
     p.set_defaults(func=cmd_eval)
 
     p = sub.add_parser("install-hermes-gate", help="install the Hermes cron gate script")

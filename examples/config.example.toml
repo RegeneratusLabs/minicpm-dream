@@ -56,9 +56,22 @@ max_calls = 40
 
 [retrieval]
 fts = true
-embeddings = "off"                # "auto" requires the [embeddings] extra
-embedding_model = "BAAI/bge-small-en-v1.5"
+# Complete OpenBMB retrieval stack (requires the [openbmb] extra):
+embeddings = "openbmb"            # off | openbmb
+embedding_model = "openbmb/MiniCPM-Embedding-Light"
+embedding_device = "cpu"
+embedding_dtype = "float32"
+embedding_max_length = 512
+embedding_threads = 4
+embedding_batch_size = 8
+reranker = "openbmb"              # off | openbmb
+reranker_model = "openbmb/MiniCPM-Reranker-Light"
+reranker_dtype = "float16"
+reranker_max_length = 512
+reranker_batch_size = 2
+rerank_top_n = 6
 rrf_k = 60
+strict = false                    # true = fail instead of falling back to FTS5
 
 [hermes]
 home = "~/.hermes"

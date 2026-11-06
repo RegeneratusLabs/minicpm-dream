@@ -7,8 +7,8 @@ from minicpm_dream.backends.mock import MockBackend
 from minicpm_dream.eval.harness import discover_cases, run_suite
 
 ROOT = Path(__file__).resolve().parents[1]
-SUITE = ROOT / "evals" / "synthetic-days"
-SCRIPT = SUITE / "basic" / "mock_script.json"
+SUITE = ROOT / "evals" / "synthetic-days" / "basic"
+SCRIPT = SUITE / "mock_script.json"
 
 
 def test_discover_cases():

@@ -15,8 +15,9 @@ Hermes state.db ──(read-only)──► adapter ──► redaction ──►
 - **Read**: `state.db`, `MEMORY.md`, `USER.md`, `config.yaml` (limits only).
 - **Sent to the model**: redacted episode text, date refs, and retrieved memory
   texts. Nothing else.
-- **Network**: only the explicit `setup --download` (Hugging Face), or a
-  backend you configure (`openai` with a `base_url`). There is no telemetry.
+- **Network**: only the explicit `setup --download` / `--download-embeddings`
+  (Hugging Face), or a backend you configure (`openai` with a `base_url`). There
+  is no telemetry. Embedding and reranking run locally.
 - **Written**: the ledger, diary, exports, backups, and logs. No writes to
   Hermes unless `--apply-hermes` and `write_mode = "apply"`.
 
@@ -107,3 +108,6 @@ paths, or a Hermes write without the explicit apply path.
 - Back up the data directory; the ledger is the source of truth, `DREAMS.md` is
   a view.
 - Review `DREAMS.md` weekly; it is the audit trail for what the model believed.
+- `scripts/compare_models.py` sends the chosen suite to a cloud endpoint. It
+  defaults to the synthetic suite; do not point it at private transcripts
+  without deciding that transfer is acceptable.

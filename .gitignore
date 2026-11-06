@@ -14,6 +14,8 @@ build/
 data/
 data-*/
 data-*.json
+compare-*.json
+spark-*.json
 models/
 exports/
 backups/

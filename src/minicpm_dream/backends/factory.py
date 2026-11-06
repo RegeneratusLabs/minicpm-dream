@@ -41,6 +41,8 @@ def make_backend(
             default_temperature=cfg.model.temperature,
             default_max_tokens=cfg.model.max_tokens,
             disable_thinking=cfg.model.disable_thinking,
+            structured_mode=cfg.model.structured_mode,
+            reasoning_effort=cfg.model.reasoning_effort or None,
         )
     if backend == "llama_cpp":
         model_path = resolve_model_path(cfg)

@@ -81,8 +81,13 @@ For each verified candidate, retrieve up to `top_k` active memories with hybrid
 ranking:
 
 - SQLite FTS5 BM25 over `text`, `subject`, `section`;
-- optional bge-small embeddings later, fused with reciprocal rank fusion;
-- a small recency/confidence boost.
+- MiniCPM-Embedding-Light dense vectors from `memory_vectors`, cached per
+  memory and refreshed only for new/changed rows;
+- reciprocal rank fusion of the two channels;
+- MiniCPM-Reranker-Light cross-encoder over the top candidates.
+
+Both OpenBMB models are local and optional; FTS5 alone remains a working
+fallback.
 
 If FTS5 is unavailable, a token/LIKE fallback keeps the system usable.
 

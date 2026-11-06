@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from ..config import IngestCfg, PrivacyCfg
-from ..util.text import normalize_text
+from ..util.text import is_probably_meta, normalize_text
 from .base import Episode
 from .redact import injection_flags, redact
 
@@ -21,6 +21,7 @@ class FilterStats:
     dropped_long: int = 0
     dropped_injection: int = 0
     dropped_secret: int = 0
+    dropped_meta: int = 0
     redactions: int = 0
     flags: dict[str, int] = field(default_factory=dict)
 
@@ -35,6 +36,7 @@ class FilterStats:
             "dropped_long": self.dropped_long,
             "dropped_injection": self.dropped_injection,
             "dropped_secret": self.dropped_secret,
+            "dropped_meta": self.dropped_meta,
             "redactions": self.redactions,
         }
 
@@ -63,6 +65,9 @@ class EpisodeFilter:
         text = normalize_text(ep.text)
         if len(text) < 3:
             self.stats.dropped_empty += 1
+            return False
+        if is_probably_meta(text):
+            self.stats.dropped_meta += 1
             return False
         if len(text) > self.cfg.max_message_chars:
             self.stats.dropped_long += 1

@@ -26,6 +26,8 @@ class OpenAICompatBackend:
         default_temperature: float = 0.2,
         default_max_tokens: int = 1200,
         disable_thinking: bool = False,
+        structured_mode: str = "auto",
+        reasoning_effort: str | None = None,
     ):
         if not base_url:
             raise BackendUnavailable("model.base_url is empty (set it or use backend=llama_cpp)")
@@ -37,10 +39,24 @@ class OpenAICompatBackend:
         self.default_temperature = default_temperature
         self.default_max_tokens = default_max_tokens
         self.disable_thinking = disable_thinking
+        self.structured_mode = structured_mode if structured_mode in {"auto", "json_schema", "json_object", "none"} else "auto"
+        self.reasoning_effort = reasoning_effort
         headers = {"Content-Type": "application/json"}
         if api_key:
             headers["Authorization"] = f"Bearer {api_key}"
         self._client = httpx.Client(timeout=timeout_s, headers=headers)
+
+    def _set_response_format(self, payload: dict[str, Any], schema: dict[str, Any]) -> None:
+        mode = self.structured_mode
+        if mode in {"auto", "json_schema"}:
+            payload["response_format"] = {
+                "type": "json_schema",
+                "json_schema": {"name": "result", "schema": schema},
+            }
+        elif mode == "json_object":
+            payload["response_format"] = {"type": "json_object"}
+        else:
+            payload.pop("response_format", None)
 
     def complete(
         self,
@@ -59,11 +75,10 @@ class OpenAICompatBackend:
         }
         if self.disable_thinking:
             payload["chat_template_kwargs"] = {"enable_thinking": False}
+        if self.reasoning_effort:
+            payload["reasoning_effort"] = self.reasoning_effort
         if schema is not None:
-            payload["response_format"] = {
-                "type": "json_schema",
-                "json_schema": {"name": "result", "schema": schema},
-            }
+            self._set_response_format(payload, schema)
         started = time.monotonic()
         last_error: Exception | None = None
         for attempt in range(3):
@@ -81,6 +96,13 @@ class OpenAICompatBackend:
                     raise last_error
                 time.sleep(1.0 * (attempt + 1))
                 continue
+            if response.status_code == 400 and self.structured_mode == "auto" and schema is not None:
+                body_text = response.text.lower()
+                if "response_format" in body_text or "json_schema" in body_text:
+                    log.warning("endpoint rejected json_schema; retrying with json_object")
+                    self.structured_mode = "json_object"
+                    payload["response_format"] = {"type": "json_object"}
+                    continue
             if response.status_code >= 400:
                 raise BackendError(
                     f"endpoint returned {response.status_code}: {response.text[:500]}"

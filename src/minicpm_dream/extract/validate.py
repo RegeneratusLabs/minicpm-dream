@@ -85,7 +85,7 @@ def normalize_kind(kind: str, text: str) -> str:
     return kind
 
 
-def normalize_section(kind: str, section: str) -> str:
+def normalize_section(kind: str, section: str, text: str = "") -> str:
     """Keep the model's section only where it makes sense for the kind."""
     forced = _SECTION_FOR_KIND.get(kind)
     if forced:
@@ -96,6 +96,14 @@ def normalize_section(kind: str, section: str) -> str:
         return section if section in {"procedures", "lessons"} else "lessons"
     if kind == "decision":
         return section if section in {"projects", "procedures", "lessons", "open_loops"} else "projects"
+    low = text.casefold()
+    if section in {"preferences", "projects", "environment", "procedures"}:
+        if re.search(r"\b(cron|script|command|config|cli|workflow|must live|have to live)\b", low):
+            return "procedures"
+        if "~/." in text or re.search(r"\b(ubuntu|optiplex|homelab|ram|host|server)\b", low):
+            return "environment"
+        if re.search(r"\b(project|ledger|database|postgres|sqlite|miniCPM|python)\b", low):
+            return "projects"
     return section if section in SECTIONS else "projects"
 
 
@@ -138,7 +146,9 @@ def apply_date_text(candidate: Candidate, chunk: Chunk) -> str:
     if candidate.date_ref in refs:
         ref = refs[candidate.date_ref]
         pattern = re.compile(re.escape(ref.phrase), re.IGNORECASE)
-        if pattern.search(text):
+        if ref.phrase == ref.iso and ref.iso in text:
+            pass  # already an absolute date; do not prefix a second "on"
+        elif pattern.search(text):
             text = pattern.sub(f"on {ref.iso}", text)
         elif any(ev.quote and pattern.search(ev.quote) for ev in candidate.evidence):
             if ref.iso not in text:
@@ -173,7 +183,7 @@ def validate_item(item: dict[str, Any], chunk: Chunk) -> tuple[Candidate | None,
     if section not in SECTIONS:
         errors.append(f"invalid section {section!r}")
     kind = normalize_kind(kind, _str(item.get("text"), limit=240))
-    section = normalize_section(kind, section)
+    section = normalize_section(kind, section, _str(item.get("text"), limit=240))
 
     raw_text = item.get("text")
     if not isinstance(raw_text, str) or len(normalize_text(raw_text)) > 240:
@@ -207,6 +217,21 @@ def validate_item(item: dict[str, Any], chunk: Chunk) -> tuple[Candidate | None,
     confidence = min(1.0, max(0.0, confidence))
 
     raw_evidence = item.get("evidence") or []
+    if isinstance(raw_evidence, str):
+        raw_evidence = [raw_evidence]
+    item_episode = _str(item.get("episode_id"), limit=40)
+    normalized_evidence: list[dict[str, Any]] = []
+    if isinstance(raw_evidence, list):
+        for ev in raw_evidence:
+            if isinstance(ev, str):
+                normalized_evidence.append({"episode_id": item_episode, "quote": ev})
+            elif isinstance(ev, dict):
+                entry = dict(ev)
+                entry.setdefault("episode_id", item_episode)
+                if "quote" not in entry and "text" in entry:
+                    entry["quote"] = entry["text"]
+                normalized_evidence.append(entry)
+    raw_evidence = normalized_evidence
     evidence: list[Evidence] = []
     episodes: dict[str, Episode] = {ep.id: ep for ep in chunk.episodes}
     if not isinstance(raw_evidence, list) or not raw_evidence:
@@ -275,6 +300,9 @@ def validate_item(item: dict[str, Any], chunk: Chunk) -> tuple[Candidate | None,
     if valid_from is None and kind in {"event", "task"} and chunk.episodes:
         valid_from = chunk.episodes[0].spoken_at_local[:10]
     candidate.text = apply_date_text(candidate, chunk)
+    explicit_dates = re.findall(r"\b20\d{2}-\d{2}-\d{2}\b", candidate.text)
+    if explicit_dates:
+        valid_from = explicit_dates[0]
     candidate.valid_from = valid_from
     candidate.valid_to = None
     if len(candidate.text) > 300:

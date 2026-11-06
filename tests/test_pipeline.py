@@ -29,7 +29,7 @@ def test_pipeline_end_to_end(cfg):
         input_path=str(FIXTURE / "episodes.jsonl"),
     )
     assert result.status == "ok"
-    assert result.counters["episodes_kept"] == 7  # secret-bearing turn dropped
+    assert result.counters["episodes_kept"] == 6  # secret + meta turns dropped
     assert result.counters["candidates"] == 3
     assert result.counters["verified"] == 3
     assert result.counters["applied"] == 3

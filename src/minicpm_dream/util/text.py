@@ -32,8 +32,14 @@ def norm_key(text: str) -> str:
     return " ".join(_TOKEN.findall(text))
 
 
+_SPELLING = {"favorite": "favourite", "favorites": "favourites"}
+
+
 def tokens(text: str) -> list[str]:
-    return _TOKEN.findall(normalize_text(text).casefold())
+    folded = normalize_text(text).casefold()
+    for source, target in _SPELLING.items():
+        folded = folded.replace(source, target)
+    return _TOKEN.findall(folded)
 
 
 def token_set(text: str, *, drop_stopwords: bool = True) -> set[str]:

@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.2.0 — OpenBMB retrieval stack and real-memory validation
+
+- Default retrieval is now the complete OpenBMB stack:
+  `MiniCPM-Embedding-Light` (440M, 1024-dim, 8K tokens) plus
+  `MiniCPM-Reranker-Light` (1.2B cross-encoder), with cached SQLite vectors and
+  reciprocal rank fusion over FTS5.
+- Optional `[openbmb]` extra, `setup --download-embeddings`, `index` command,
+  and `doctor` cache/dependency checks.
+- Cloud-compatible `json_object` fallback for endpoints that reject
+  `json_schema`; `reasoning_effort` support; evidence normalization for string
+  arrays.
+- `--hermes-home` isolation, `--max-minutes`, and memory-pressure reporting in
+  `review.json` and the cron gate.
+- Hermes action fitting now simulates the final file and drops actions that
+  would exceed the char limit.
+- Added the 24-turn / 14-fact `full-day` suite and a local-vs-cloud comparison
+  script (`scripts/compare_models.py`).
+- Real Hermes sandbox validation and the fine-tuning decision recorded in
+  `docs/models.md`.
+
 ## 0.1.0 — initial release
 
 - Hermes and JSONL ingest adapters, read-only and schema-tolerant.

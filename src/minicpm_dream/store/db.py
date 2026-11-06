@@ -398,6 +398,42 @@ class Store:
         )
         return cur.rowcount
 
+    # -- vectors ------------------------------------------------------------
+    def upsert_vector(self, memory_id: str, *, model: str, vector: bytes, dim: int) -> None:
+        self.conn.execute(
+            "INSERT INTO memory_vectors(memory_id, model, dim, vector) VALUES (?,?,?,?) "
+            "ON CONFLICT(memory_id) DO UPDATE SET model=excluded.model, dim=excluded.dim, "
+            "vector=excluded.vector",
+            (memory_id, model, dim, vector),
+        )
+
+    def vectors(self, *, model: str) -> list[dict[str, Any]]:
+        rows = self.conn.execute(
+            "SELECT v.memory_id, v.dim, v.vector FROM memory_vectors v "
+            "JOIN memories m ON m.id = v.memory_id "
+            "WHERE v.model=? AND m.status='active'",
+            (model,),
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+    def clear_vectors(self, *, model: str) -> int:
+        cur = self.conn.execute("DELETE FROM memory_vectors WHERE model=?", (model,))
+        return cur.rowcount
+
+    def vector_ids(self, *, model: str) -> set[str]:
+        rows = self.conn.execute(
+            "SELECT memory_id FROM memory_vectors WHERE model=?", (model,)
+        ).fetchall()
+        return {str(row["memory_id"]) for row in rows}
+
+    def prune_vectors(self, *, model: str) -> int:
+        cur = self.conn.execute(
+            "DELETE FROM memory_vectors WHERE model=? AND memory_id NOT IN "
+            "(SELECT id FROM memories WHERE status='active')",
+            (model,),
+        )
+        return cur.rowcount
+
     def cooldown(self, key: str) -> str | None:
         row = self.conn.execute("SELECT until FROM cooldowns WHERE key=?", (key,)).fetchone()
         return row["until"] if row else None

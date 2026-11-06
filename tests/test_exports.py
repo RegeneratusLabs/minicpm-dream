@@ -95,3 +95,25 @@ def test_apply_actions_rejects_ambiguous_anchor(tmp_path):
     )
     assert not report.ok
     assert "matched 2" in report.error
+
+
+def test_bundle_respects_a_full_hermes_file(tmp_path):
+    store = Store(tmp_path / "l.db")
+    memory_path = tmp_path / "MEMORY.md"
+    user_path = tmp_path / "USER.md"
+    memory_path.write_text("existing entry " * 146, encoding="utf-8")  # ~2100 chars
+    user_path.write_text("", encoding="utf-8")
+    try:
+        store.insert_memory(
+            kind="fact", section="projects", text="A new memory that will not fit.",
+            evidence=[{"episode_id": "e", "quote": "q", "verified": True}], salience=0.9,
+        )
+        bundle = build_bundle(
+            store, memory_path=memory_path, user_path=user_path,
+            memory_limit=2200, user_limit=1375,
+        )
+        assert bundle.actions == []
+        assert bundle.skipped
+        assert bundle.pressure["memory"]["fill"] >= 0.85
+    finally:
+        store.close()

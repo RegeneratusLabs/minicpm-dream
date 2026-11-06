@@ -18,6 +18,10 @@ def test_doctor_is_usable_without_a_model(tmp_path, capsys):
 
 def test_cli_run_and_gate(tmp_path, capsys):
     data_dir = str(tmp_path / "data")
+    hermes_home = tmp_path / "hermes"
+    (hermes_home / "memories").mkdir(parents=True)
+    for name in ("MEMORY.md", "USER.md"):
+        (hermes_home / "memories" / name).write_text("", encoding="utf-8")
     code = main(
         [
             "run",
@@ -26,6 +30,7 @@ def test_cli_run_and_gate(tmp_path, capsys):
             "--backend", "mock",
             "--mock-script", str(FIXTURE / "mock_script.json"),
             "--data-dir", data_dir,
+            "--hermes-home", str(hermes_home),
             "--since", "2026-11-04T14:00:00+00:00",
             "--until", "2026-11-05T14:00:00+00:00",
         ]

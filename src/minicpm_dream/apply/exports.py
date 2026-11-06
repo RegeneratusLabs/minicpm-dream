@@ -74,6 +74,7 @@ class ExportBundle:
     actions: list[dict[str, Any]] = field(default_factory=list)
     skipped: list[dict[str, Any]] = field(default_factory=list)
     limits: dict[str, int] = field(default_factory=dict)
+    pressure: dict[str, Any] = field(default_factory=dict)
     generated_at: str = ""
 
     def as_review(self) -> dict[str, Any]:
@@ -84,6 +85,7 @@ class ExportBundle:
             "user": {"entries": self.user_entries, "content": self.user_text},
             "actions": self.actions,
             "skipped": self.skipped,
+            "pressure": self.pressure,
         }
 
 
@@ -97,6 +99,56 @@ def _fit(entries: list[str], limit: int) -> tuple[list[str], list[str]]:
         else:
             skipped.append(entry)
     return kept, skipped
+
+
+def _apply_action(entries: list[str], action: dict[str, Any]) -> list[str] | None:
+    kind = str(action.get("action", "")).lower()
+    content = str(action.get("content", "")).strip()
+    old_text = str(action.get("old_text", ""))
+    if kind == "add":
+        return entries + [content] if content else None
+    matches = [i for i, entry in enumerate(entries) if old_text and old_text in entry]
+    if len(matches) != 1:
+        return None
+    out = list(entries)
+    if kind == "replace" and content:
+        out[matches[0]] = content
+    elif kind == "remove":
+        out.pop(matches[0])
+    else:
+        return None
+    return out
+
+
+def _fit_actions(
+    existing: list[str],
+    actions: list[dict[str, Any]],
+    limit: int,
+    salience: dict[str, float],
+) -> tuple[list[dict[str, Any]], list[str], list[dict[str, Any]]]:
+    """Apply diffs in memory-priority order, keeping the final file within budget."""
+    priority = {"remove": 0, "replace": 1, "add": 2}
+    ordered = sorted(
+        actions,
+        key=lambda a: (
+            priority.get(str(a.get("action", "")).lower(), 3),
+            -salience.get(str(a.get("memory_id", "")), 0.0),
+        ),
+    )
+    working = list(existing)
+    kept: list[dict[str, Any]] = []
+    dropped: list[dict[str, Any]] = []
+    for action in ordered:
+        trial = _apply_action(working, action)
+        if trial is None:
+            dropped.append(action)
+            continue
+        if len(render_entries(trial)) <= limit:
+            working = trial
+            kept.append(action)
+        else:
+            dropped.append(action)
+    return kept, working, dropped
 
 
 def _matches_existing(text: str, existing: list[str]) -> str | None:
@@ -158,6 +210,7 @@ def build_bundle(
             bundle.skipped.append({"target": target, "text": text, "reason": "char budget"})
 
         existing = existing_memory if target == "memory" else existing_user
+        target_actions: list[dict[str, Any]] = []
         handled: set[str] = set()
         for memory in by_target[target]:
             text = _entry_for_memory(memory)
@@ -170,7 +223,7 @@ def build_bundle(
                 match = _matches_existing(old_text, existing) if old_text else None
                 if match and match not in handled:
                     handled.add(match)
-                    bundle.actions.append(
+                    target_actions.append(
                         {
                             "target": target,
                             "action": "replace",
@@ -181,7 +234,7 @@ def build_bundle(
                         }
                     )
                     continue
-            bundle.actions.append(
+            target_actions.append(
                 {
                     "target": target,
                     "action": "add",
@@ -200,7 +253,7 @@ def build_bundle(
             match = _matches_existing(text, existing)
             if match and match not in handled:
                 handled.add(match)
-                bundle.actions.append(
+                target_actions.append(
                     {
                         "target": target,
                         "action": "remove",
@@ -209,6 +262,34 @@ def build_bundle(
                         "reason": str(memory.get("status")),
                     }
                 )
+
+        salience = {str(m["id"]): float(m.get("salience") or 0.0) for m in by_target[target]}
+        salience.update({str(m["id"]): 0.0 for m in superseded})
+        fitted, final_entries, dropped = _fit_actions(existing, target_actions, limit, salience)
+        bundle.actions.extend(fitted)
+        for action in dropped:
+            bundle.skipped.append(
+                {
+                    "target": target,
+                    "text": action.get("content") or action.get("old_text", ""),
+                    "reason": "char budget",
+                    "original_reason": action.get("reason", ""),
+                }
+            )
+        if target == "memory":
+            bundle.memory_entries = final_entries
+            bundle.memory_text = render_entries(final_entries)
+        else:
+            bundle.user_entries = final_entries
+            bundle.user_text = render_entries(final_entries)
+        bundle.pressure[target] = {
+            "chars": len(bundle.memory_text if target == "memory" else bundle.user_text),
+            "limit": limit,
+            "fill": round(
+                len(bundle.memory_text if target == "memory" else bundle.user_text) / max(1, limit), 3
+            ),
+            "skipped": sum(1 for item in bundle.skipped if item.get("target") == target),
+        }
     return bundle
 
 

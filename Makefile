@@ -46,7 +46,7 @@ check: lint typecheck test
 eval:
 	rm -rf $(EVAL_DATA)
 	$(DR) eval \
-		--suite evals/synthetic-days \
+		--suite evals/synthetic-days/basic \
 		--backend mock \
 		--mock-script evals/synthetic-days/basic/mock_script.json \
 		--data-dir $(EVAL_DATA)

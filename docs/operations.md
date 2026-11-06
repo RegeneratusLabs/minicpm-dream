@@ -28,6 +28,19 @@ uv run ruff check .
 uv run mypy src
 ```
 
+For the complete OpenBMB retrieval stack:
+
+```bash
+uv pip install -e ".[openbmb]"
+minicpm-dream setup --download-embeddings
+minicpm-dream index
+```
+
+The models are ~0.87 GB (embedding) and ~2.72 GB (reranker) and are cached by
+Hugging Face. Set `HF_HOME` if the default cache is not writable. On a 15 GB
+machine, load them after the main model is unloaded, or use
+`retrieval.embeddings="off"` for a low-memory pass.
+
 ## llama.cpp
 
 The tool expects a `llama-server` binary with JSON-schema `response_format`
@@ -208,6 +221,8 @@ start).
 | server starts then exits | `data/logs/llama-server.log`; usually insufficient RAM or a bad GGUF |
 | every candidate rejected | run `--verbose`; inspect `rejected` reasons in the JSON output |
 | no episodes | timezone/window; run `minicpm-dream ingest ... --out -` |
+| OpenBMB load fails | install `.[openbmb]`, set `HF_HOME`, or set `retrieval.embeddings="off"`; `doctor` reports cache status |
+| vectors missing | `minicpm-dream index --rebuild` |
 | gate always wakes | stale `review.json` actions; apply/reject them |
 | slow run | reduce `threads`, `max_chunk_tokens`, or the number of episodes; check swap |
 | JSON schema errors | server may not support `response_format`; use llama.cpp or a recent vLLM |

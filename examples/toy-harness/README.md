@@ -28,7 +28,7 @@ cat ./demo-data/exports/review.json
 
 Expected:
 
-- 4 messages kept (the meta-state is dropped by validation, not by ingest);
+- 4 messages kept (the meta-state and the secret-bearing turn are dropped at ingest);
 - 3 candidates, all verified;
 - 3 memories: a preference, a project fact, and a dated task on 2026-11-06;
 - 2 Hermes review actions (the task is `open_loops`, diary-only);

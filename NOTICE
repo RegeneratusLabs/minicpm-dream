@@ -11,9 +11,13 @@ repository. The default model, MiniCPM5-2B, is released by OpenBMB under the
 Apache-2.0 License:
   https://huggingface.co/openbmb/MiniCPM5-2B
 
-Optional embedding model:
-  BAAI/bge-small-en-v1.5 (MIT)
-  https://huggingface.co/BAAI/bge-small-en-v1.5
+Retrieval stack:
+  MiniCPM-Embedding-Light (MiniCPM Model License; free academic,
+  commercial registration required)
+  https://huggingface.co/openbmb/MiniCPM-Embedding-Light
+  MiniCPM-Reranker-Light (MiniCPM Model License; free academic,
+  commercial registration required)
+  https://huggingface.co/openbmb/MiniCPM-Reranker-Light
 
 llama.cpp is a separate project (MIT):
   https://github.com/ggml-org/llama.cpp

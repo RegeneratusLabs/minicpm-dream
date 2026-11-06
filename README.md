@@ -50,6 +50,8 @@ uncertain operations become review items instead of writes.
 git clone <this repo> minicpm-memory && cd minicpm-memory
 uv venv .venv && source .venv/bin/activate
 uv pip install -e ".[dev]"
+# optional, for the OpenBMB retrieval stack:
+uv pip install -e ".[openbmb]"
 
 # 1. See what the tool can see
 minicpm-dream doctor
@@ -68,11 +70,12 @@ cat ~/.local/share/minicpm-dream/DREAMS.md
 The mock run proves the plumbing. It does not prove model quality; that is what
 `minicpm-dream eval` and `docs/models.md` are for.
 
-**Status:** v0.1.0. On the reference 6-core CPU, MiniCPM5-2B Q4_K_M scores
-P=1.0 / R=1.0 / schema=1.0 / temporal=1.0 on the 8-message synthetic fixture in
-~49 s. That is one small case with three gold facts, not a benchmark. The repo
-also documents the interface fixes the 2B needed (thinking mode, date refs,
-retractions, task typing) in `docs/models.md`.
+**Status:** v0.2.0. Retrieval is the complete OpenBMB stack
+(MiniCPM-Embedding-Light + MiniCPM-Reranker-Light). On the 8-message fixture the
+2B scores 1.0/1.0/1.0; on a denser 24-message / 14-fact day it scores
+P=0.86 / R=0.43 / F1=0.57, versus P=0.92 / R=0.86 / F1=0.89 for DeepSeek Flash.
+That is one synthetic scenario, not a benchmark. Real Hermes validation and the
+fine-tuning decision are in `docs/models.md`.
 
 ## Local MiniCPM setup
 
@@ -82,6 +85,7 @@ Apache-2.0, ~1.56 GB).
 ```bash
 # Download + checksum-verify the GGUF into the data directory
 minicpm-dream setup --download
+minicpm-dream setup --download-embeddings   # OpenBMB Light models
 
 # Install llama.cpp (one option)
 #   https://github.com/ggml-org/llama.cpp  → put `llama-server` on PATH
@@ -154,11 +158,14 @@ and gate + review turn).
 | Cheap verifier | MiniCPM5-1B Q4_K_M | second opinion / triage |
 | Quality | MiniCPM4.1-8B Q4_K_M | GPU or weekly deep pass |
 | Long context | MiniCPM-SALA | 1M-token whole-week pass on a large GPU |
-| Embeddings | BAAI/bge-small-en-v1.5 (MIT) | optional hybrid retrieval |
+| Embeddings | **MiniCPM-Embedding-Light** (440M, 1024-dim) | local hybrid retrieval |
+| Reranker | **MiniCPM-Reranker-Light** (1.2B) | local reranking |
 
-MiniCPM-Embedding is deliberately not used: it is 2.4B, capped at 512 tokens, and
-has a separate model license. See `docs/models.md` for the evaluation table and
-licensing notes.
+Retrieval is a complete OpenBMB stack: **MiniCPM-Embedding-Light** (440M,
+1024-dim, 8K tokens, dense + sparse) and **MiniCPM-Reranker-Light** (1.2B
+cross-encoder). Both run locally; the models use the MiniCPM model license
+(free academic, commercial registration). See `docs/models.md` for CPU timings
+and the comparison with a cloud model.
 
 ## Commands
 
@@ -174,7 +181,8 @@ minicpm-dream search "query"
 minicpm-dream explain <memory-id>
 minicpm-dream forget <memory-id> --yes
 minicpm-dream maintain --archive-days 180
-minicpm-dream eval --suite evals/synthetic-days
+minicpm-dream index                 # build/refresh OpenBMB memory vectors
+minicpm-dream eval --suite evals/synthetic-days/full-day
 ```
 
 ## Development

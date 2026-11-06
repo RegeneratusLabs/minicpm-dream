@@ -131,3 +131,30 @@ def test_reminder_cue_forces_task_and_open_loops():
     assert cand.kind == "task"
     assert cand.section == "open_loops"
     assert cand.valid_from == "2026-11-06"
+
+
+def test_accepts_flat_string_evidence_from_cloud_models():
+    ep = make_ep("I prefer dark mode in all my editors.")
+    chunk = make_chunk(ep)
+    backend = MockBackend(
+        {
+            "extract": [
+                {
+                    "items": [
+                        {
+                            "kind": "preference",
+                            "section": "preferences",
+                            "text": "Josh prefers dark mode in all editors.",
+                            "date_ref": "none",
+                            "confidence": 0.9,
+                            "episode_id": ep.id,
+                            "evidence": ["I prefer dark mode in all my editors"],
+                        }
+                    ]
+                }
+            ]
+        }
+    )
+    result = extract_chunk(backend, chunk, ExtractCfg())
+    assert len(result.candidates) == 1
+    assert result.candidates[0].evidence[0].episode_id == ep.id

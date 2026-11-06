@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -39,9 +40,11 @@ def build_messages(chunk: Chunk, cfg: ExtractCfg) -> list[dict[str, str]]:
 
 def extract_chunk(backend: Backend, chunk: Chunk, cfg: ExtractCfg) -> ExtractionResult:
     messages = build_messages(chunk, cfg)
+    schema = copy.deepcopy(load_schema("extract.json"))
+    schema["properties"]["items"]["maxItems"] = max(1, cfg.max_items)
     completion = backend.complete(
         messages,
-        schema=load_schema("extract.json"),
+        schema=schema,
         max_tokens=cfg.max_tokens,
         temperature=cfg.temperature,
     )

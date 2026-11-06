@@ -1,0 +1,18 @@
+{
+  "facts": [
+    {"kind": "fact", "section": "identity", "text": "Josh Thomson is a software developer based in Brisbane."},
+    {"kind": "preference", "section": "preferences", "text": "Josh prefers dark mode in all editors."},
+    {"kind": "preference", "section": "preferences", "text": "Josh dislikes long explanations."},
+    {"kind": "fact", "section": "projects", "text": "The miniCPM-memory project uses Python 3.12 and PostgreSQL for its ledger.", "valid_from": "2026-11-04"},
+    {"kind": "event", "section": "open_loops", "text": "Josh started using MiniCPM5-2B for local extraction on 2026-11-03.", "valid_from": "2026-11-03"},
+    {"kind": "fact", "section": "people", "text": "Cameron is Josh's brother."},
+    {"kind": "fact", "section": "environment", "text": "The homelab host is an OptiPlex 7060 with 16 GB of RAM."},
+    {"kind": "fact", "section": "procedures", "text": "Hermes cron scripts must live in ~/.hermes/scripts."},
+    {"kind": "task", "section": "open_loops", "text": "Josh has a dentist appointment on 2026-11-06 at 3pm.", "valid_from": "2026-11-06"},
+    {"kind": "decision", "section": "projects", "text": "The project stays local-first by default; cloud backends are opt-in."},
+    {"kind": "fact", "section": "lessons", "text": "Subagent claims about venue details are unreliable; verify with Dianping."},
+    {"kind": "preference", "section": "preferences", "text": "Josh's favourite tea is jasmine tea."},
+    {"kind": "preference", "section": "people", "text": "Cameron prefers tea over coffee."},
+    {"kind": "fact", "section": "environment", "text": "The homelab runs Ubuntu 24.04."}
+  ]
+}

@@ -74,6 +74,8 @@ class ModelCfg:
     startup_timeout_s: float = 120.0
     verify_sha256: bool = True
     disable_thinking: bool = True
+    structured_mode: str = "auto"
+    reasoning_effort: str = ""
 
 
 @dataclass
@@ -123,9 +125,21 @@ class ConsolidateCfg:
 @dataclass
 class RetrievalCfg:
     fts: bool = True
-    embeddings: str = "off"  # off | auto
-    embedding_model: str = "BAAI/bge-small-en-v1.5"
+    embeddings: str = "openbmb"  # off | openbmb
+    embedding_model: str = "openbmb/MiniCPM-Embedding-Light"
+    embedding_device: str = "cpu"
+    embedding_dtype: str = "float32"
+    embedding_max_length: int = 512
+    embedding_threads: int = 4
+    embedding_batch_size: int = 8
+    reranker: str = "openbmb"  # off | openbmb
+    reranker_model: str = "openbmb/MiniCPM-Reranker-Light"
+    reranker_dtype: str = "float16"
+    reranker_max_length: int = 512
+    reranker_batch_size: int = 2
+    rerank_top_n: int = 6
     rrf_k: int = 60
+    strict: bool = False
 
 
 @dataclass

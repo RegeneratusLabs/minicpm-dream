@@ -31,3 +31,10 @@ def test_injection_is_dropped():
     filt = EpisodeFilter(IngestCfg(), PrivacyCfg())
     assert not filt.keep(ep)
     assert filt.stats.dropped_injection == 1
+
+
+def test_meta_state_is_dropped_before_prompting():
+    ep = make_ep("The user is asking about lunch.")
+    filt = EpisodeFilter(IngestCfg(), PrivacyCfg())
+    assert not filt.keep(ep)
+    assert filt.stats.dropped_meta == 1
