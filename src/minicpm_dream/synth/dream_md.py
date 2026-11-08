@@ -113,10 +113,15 @@ def append_section(path: str | Path, section: str, *, keep_sections: int = 90) -
     parts = existing.split("\n## ")
     head = parts[0].rstrip() + "\n\n"
     sections = parts[1:]
-    sections.append(section.lstrip("\n"))
+    # render_section()/quiet_section() already lead with "## "; the join below
+    # supplies that prefix, so strip it or every appended section doubles it.
+    new_section = section.lstrip("\n")
+    if new_section.startswith("## "):
+        new_section = new_section[3:]
+    sections.append(new_section)
     if keep_sections > 0:
         sections = sections[-keep_sections:]
-    text = head + "\n## ".join(sections)
+    text = head + "## " + "\n## ".join(sections)
     if not text.endswith("\n"):
         text += "\n"
     p.parent.mkdir(parents=True, exist_ok=True)
