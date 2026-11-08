@@ -4,6 +4,7 @@ import sqlite3
 from datetime import UTC, datetime
 
 from minicpm_dream.ingest.hermes import HermesAdapter
+from minicpm_dream.pipeline import collect_episodes
 
 
 def _make_db(path):
@@ -80,3 +81,58 @@ def test_read_memory_limits(tmp_path, cfg):
     )
     adapter = HermesAdapter(cfg)
     assert adapter.read_memory_limits() == (3000, 2000)
+
+
+def _make_excluded_lead_db(path):
+    """A day that opens with a long cron session, then real desktop traffic."""
+    con = sqlite3.connect(path)
+    con.executescript(
+        """
+        CREATE TABLE sessions (
+            id TEXT PRIMARY KEY, source TEXT, chat_type TEXT, chat_id TEXT,
+            thread_id TEXT, parent_session_id TEXT, hidden INTEGER, started_at REAL,
+            title TEXT
+        );
+        CREATE TABLE messages (
+            id INTEGER PRIMARY KEY, session_id TEXT, role TEXT, content TEXT,
+            timestamp REAL, active INTEGER, compacted INTEGER, _compressed_summary INTEGER
+        );
+        """
+    )
+    base = datetime(2026, 11, 7, 0, 0, tzinfo=UTC).timestamp()
+    con.execute(
+        "INSERT INTO sessions VALUES ('cron1','cron',NULL,NULL,NULL,NULL,0,?, 'nightly')",
+        (base,),
+    )
+    con.execute(
+        "INSERT INTO sessions VALUES ('s1','desktop','dm','chat1',NULL,NULL,0,?, 'work')",
+        (base + 4000,),
+    )
+    rows = [
+        (i, "cron1", "user", f"cron prompt {i}", base + i, 1, 0, 0) for i in range(1, 41)
+    ]
+    rows += [
+        (41, "s1", "user", "I prefer wholefood shops over supermarkets.", base + 4001, 1, 0, 0),
+        (42, "s1", "assistant", "Noted, wholefood first.", base + 4002, 1, 0, 0),
+        (43, "s1", "user", "My sister is called Amy and she lives in Cairns.", base + 4003, 1, 0, 0),
+    ]
+    con.executemany("INSERT INTO messages VALUES (?,?,?,?,?,?,?,?)", rows)
+    con.commit()
+    con.close()
+
+
+def test_limit_counts_kept_episodes_not_raw_rows(tmp_path, cfg):
+    """Regression: `limit` was pushed into SQL LIMIT, so an excluded session at the
+    start of the window could eat the budget and return zero episodes."""
+    path = tmp_path / "state.db"
+    _make_excluded_lead_db(path)
+    cfg.hermes.state_db = str(path)
+    since = datetime(2026, 11, 7, 0, 0, tzinfo=UTC)
+    until = datetime(2026, 11, 8, 0, 0, tzinfo=UTC)
+
+    kept, _stats = collect_episodes(
+        cfg, source="hermes", since=since, until=until, input_path=None, limit=2
+    )
+    assert len(kept) == 2
+    assert [ep.text for ep in kept][0].startswith("I prefer wholefood")
+    assert all(ep.source == "desktop" for ep in kept)

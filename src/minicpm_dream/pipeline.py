@@ -77,7 +77,10 @@ def collect_episodes(
 ) -> tuple[list[Episode], Any]:
     if source == "hermes":
         adapter = HermesAdapter(cfg)
-        generator = adapter.iter_episodes(since=since, until=until, tz=cfg.timezone, limit=limit)
+        # `limit` must not be pushed into SQL: LIMIT applies to raw rows before the
+        # source/privacy filters run, so a long excluded session at the start of
+        # the window can consume the whole budget and yield zero episodes.
+        generator = adapter.iter_episodes(since=since, until=until, tz=cfg.timezone)
     elif source == "jsonl":
         if not input_path:
             raise ValueError("--input is required for source=jsonl")
@@ -95,6 +98,8 @@ def collect_episodes(
         if filt.keep(ep):
             kept.append(ep)
         if len(kept) >= cfg.budgets.max_episodes:
+            break
+        if limit is not None and len(kept) >= limit:
             break
     return kept, filt.stats
 
