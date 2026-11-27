@@ -84,6 +84,7 @@ class IngestCfg:
     trusted_sources: list[str] = None  # type: ignore[assignment]
     exclude_sources: list[str] = None  # type: ignore[assignment]
     include_tool_messages: bool = False
+    claude_code_dir: str = "~/.claude/projects"
     max_message_chars: int = 8000
     max_episode_chars: int = 8000
     dedupe: bool = True
@@ -93,7 +94,7 @@ class IngestCfg:
         if self.sources is None:
             self.sources = ["hermes", "jsonl"]
         if self.trusted_sources is None:
-            self.trusted_sources = ["telegram", "desktop", "tui", "cli", "local", "jsonl"]
+            self.trusted_sources = ["telegram", "desktop", "tui", "cli", "local", "jsonl", "claude-code"]
         if self.exclude_sources is None:
             self.exclude_sources = ["cron", "subagent", "oneshot", "tool"]
 
@@ -122,6 +123,8 @@ class ExtractCfg:
     message_fallback_max_tokens: int = 400
     profile_pass: bool = False
     profile_max_items: int = 8
+    salience_gate: bool = False
+    salience_threshold: float = 0.12
 
 
 @dataclass
@@ -165,11 +168,15 @@ class HermesCfg:
     write_mode: str = "proposals"  # proposals | apply
     memory_char_limit: int = 2200
     user_char_limit: int = 1375
+    pinned_sections: list[str] = None  # type: ignore[assignment]
+    compact_profile: bool = True
     trusted_chat_types: list[str] = None  # type: ignore[assignment]
 
     def __post_init__(self) -> None:
         if self.trusted_chat_types is None:
             self.trusted_chat_types = ["dm"]
+        if self.pinned_sections is None:
+            self.pinned_sections = ["identity", "preferences"]
 
 
 @dataclass
@@ -178,6 +185,15 @@ class BudgetsCfg:
     max_input_tokens: int = 150_000
     max_output_tokens: int = 40_000
     max_episodes: int = 2000
+    incremental_overlap_minutes: int = 30
+
+
+@dataclass
+class RecallCfg:
+    stale_days: int = 180
+    k: int = 6
+    min_coverage: float = 0.25
+    hybrid: bool = False
 
 
 @dataclass
@@ -217,6 +233,7 @@ class Config:
     privacy: PrivacyCfg = None  # type: ignore[assignment]
     synth: SynthCfg = None  # type: ignore[assignment]
     eval: EvalCfg = None  # type: ignore[assignment]
+    recall: RecallCfg = None  # type: ignore[assignment]
     config_path: str = ""
 
     def __post_init__(self) -> None:
@@ -232,6 +249,7 @@ class Config:
             ("privacy", PrivacyCfg),
             ("synth", SynthCfg),
             ("eval", EvalCfg),
+            ("recall", RecallCfg),
         ):
             if getattr(self, name) is None:
                 setattr(self, name, cls())

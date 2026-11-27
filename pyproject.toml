@@ -4,13 +4,13 @@ build-backend = "hatchling.build"
 
 [project]
 name = "minicpm-dream"
-version = "1.0.0rc1"
-description = "Nightly memory consolidation for AI agents, on your own machine"
+version = "1.1.0"
+description = "Nightly consolidation and turn-time recall for AI agent memory, on your own machine"
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
 authors = [{ name = "miniCPM-memory contributors" }]
-keywords = ["minicpm", "agents", "memory", "consolidation", "local-llm", "hermes"]
+keywords = ["minicpm", "agents", "memory", "consolidation", "local-llm", "hermes", "mcp"]
 classifiers = [
   "Development Status :: 3 - Alpha",
   "Intended Audience :: Developers",
@@ -44,7 +44,6 @@ openbmb = [
   "sentencepiece>=0.2",
   "tiktoken>=0.7",
 ]
-server = ["fastapi>=0.115", "uvicorn>=0.30"]
 
 [project.scripts]
 minicpm-dream = "minicpm_dream.cli:main"

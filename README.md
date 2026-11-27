@@ -9,11 +9,14 @@ it. A day of work leaves hundreds of messages behind — a preference mentioned
 once, a decision, a name, an open loop, a correction — and tomorrow the context
 window has moved on.
 
-`minicpm-dream` is a nightly pass over that day. It reads the transcript, asks a
-small [MiniCPM](https://huggingface.co/openbmb) model to pull out what is worth
-keeping, checks every claim against the words that produced it, and writes the
-result to a private ledger on your machine. In the morning there is a memory your
-agent can use and a diary you can read.
+`minicpm-dream` is both halves of that fix. **At turn time** the agent asks a
+private ledger what it knows (`recall`, over MCP or the CLI) and gets back short
+facts with the verbatim quote each one came from, plus a warning when a fact is
+stale, contested or superseded. **At night** a consolidation pass reads the
+day's transcript, asks a small [MiniCPM](https://huggingface.co/openbmb) model
+to pull out what is worth keeping, checks every claim against the words that
+produced it, and writes the result into the same ledger, with a diary a human
+can read.
 
 It runs on your own hardware. No cloud account, no subscription, and no
 conversation leaves your disk.
@@ -28,6 +31,50 @@ conversation leaves your disk.
 | **Corrections without erasure** | A changed fact supersedes the old one; nothing is silently deleted. `forget` leaves a tombstone. |
 | **Reviewed writes** | New or contested entries go to a review file first. Applying them needs an explicit flag and makes a backup. |
 | **Local by default** | Model, retrieval, ledger and exports all live on your machine. |
+| **Recall in the loop** | `minicpm-dream serve` is an MCP server: the agent calls `recall` mid-conversation at ~1 ms, with receipts and caveats. |
+| **A profile that fits** | The live 2,200-char profile is a view with pinned slots; when it fills, low-salience entries are evicted (the ledger keeps them) instead of freezing out new facts. |
+| **Measured end to end** | `eval-qa` asks real questions and scores answers with and without memory, so "does this work?" is not answered by sentence similarity. |
+
+## Use it from your agent
+
+Any MCP client — Claude Code, Cursor, DSH, your own harness — can use the
+ledger. The server is stdlib only; there is nothing extra to install.
+
+```json
+{
+  "mcpServers": {
+    "minicpm-dream": {
+      "command": "minicpm-dream",
+      "args": ["serve"]
+    }
+  }
+}
+```
+
+Tools: `recall`, `remember`, `explain`, `forget`, `memory_status`. A recall hit
+looks like this, receipts included:
+
+```text
+- [mem_1793…] preferences/preference, 2mo ago: Josh prefers dark mode in all editors.
+    ↳ 2026-11-04T23:12:00+00:00 "I prefer dark mode in all my editors"
+- [mem_1793…] projects/fact: The ledger uses SQLite for storage.
+    ! superseded: not current
+    ! Replaced on 2026-11-04 by The ledger uses PostgreSQL; use the current version.
+```
+
+Recall abstains ("no reliable memory for that") instead of returning the
+least-bad row, and it never loads the reranker: FTS5 plus prefix matching is
+enough for a handful of memories, and the nightly pass keeps the hybrid index.
+Use `--hybrid` if you want MiniCPM embeddings on the read path.
+
+Shell hooks that are not MCP clients can use the same lookup:
+
+```bash
+minicpm-dream recall "what did we decide about the ledger" --k 6 --stats
+```
+
+See [examples/claude-code](examples/claude-code/README.md) for the MCP config
+and a SessionStart hook.
 
 ## Try it in two minutes
 
@@ -42,7 +89,8 @@ uv pip install -e ".[dev]"
 
 minicpm-dream run --source jsonl \
   --input evals/synthetic-days/basic/episodes.jsonl \
-  --backend mock --mock-script evals/synthetic-days/basic/mock_script.json
+  --backend mock --mock-script evals/synthetic-days/basic/mock_script.json \
+  --since 2026-11-05T00:00:00+10:00 --until 2026-11-06T00:00:00+10:00
 ```
 
 ```text
@@ -55,12 +103,43 @@ Then read what it wrote, and ask it why:
 
 ```bash
 cat ~/.local/share/minicpm-dream/DREAMS.md
-minicpm-dream search "dentist"
+minicpm-dream recall "what editor theme does the user prefer"
 minicpm-dream explain <memory-id>
+minicpm-dream eval-qa --suite evals/synthetic-days/basic --backend mock \
+  --mock-script evals/synthetic-days/basic/mock_script.json
 ```
 
 The mock proves the plumbing, not the model. Model quality and its measured
 limits are in [docs/models.md](docs/models.md).
+
+## Measuring what matters
+
+`eval` scores extraction: how closely the stored sentences match a gold list.
+That is a diagnostic. `eval-qa` measures the product: it builds a ledger from the
+transcript, asks real questions through the same recall path an agent uses, and
+answers them with and without memory.
+
+```bash
+minicpm-dream eval-qa --suite evals/synthetic-days/full-day --backend llama_cpp
+```
+
+The offline mock demo (`make demo`) prints, with a scripted stand-in answerer
+rather than a model:
+
+```text
+suite evals/synthetic-days/basic · 1 case(s) · 5 questions
+with memory    80%  (retrieval hit 80%)
+without memory 0%
+delta          +80%
+recall latency p50 0.34ms · p95 0.7ms
+```
+
+The without-memory run is the control: an agent with no memory should say
+UNKNOWN, not invent the answer. The shipped fixture also encodes a known gap —
+a retraction ("I no longer use Ollama") is still rejected as a new fact, so that
+question fails on purpose until negative facts are stored. The mock numbers show
+the harness works; a real-backend number is what you should quote, and only from
+your machine.
 
 ## A diary you can read
 
@@ -93,18 +172,18 @@ because it is the receipt.
 
 ```text
 Hermes state.db ─┐
-JSONL export ────┤→ filter/redact → chunk + date anchors → MiniCPM extract
-                 │                                          ↓
-                 │                                    evidence verifier
-                 │                                          ↓
-                 └──────────────→ hybrid retrieval → reconcile (ADD/UPDATE/
-                                    SUPERSEDE/MERGE/NOOP/DEFER)
-                                                           ↓
-                              SQLite ledger + DREAMS.md + reviewed Hermes proposals
+JSONL export ────┤→ filter/redact → chunk + salience gate → MiniCPM extract
+Claude Code ─────┘                                              ↓
+                                                        evidence verifier
+                                                                ↓
+   recall ◄──────────────── SQLite ledger ◄──── reconcile (ADD/UPDATE/
+ (MCP/CLI, ~1 ms)      + pinned profile         SUPERSEDE/MERGE/NOOP/DEFER)
+   receipts+caveats     + DREAMS.md
 ```
 
 - **Ingest** filters noise, redacts secrets, quarantines prompt injection and
-  de-duplicates. It reads Hermes `state.db` read-only, or any JSONL transcript.
+  de-duplicates. It reads Hermes `state.db` read-only, any JSONL transcript, or
+  Claude Code's session files (tool output included, if you ask for it).
 - **Prepare** chunks the day and resolves relative dates ("tomorrow", "last
   Saturday") into absolute dates in code, not in the model.
 - **Extract** asks the model for typed memories — facts, events, preferences,
@@ -114,6 +193,11 @@ JSONL export ────┤→ filter/redact → chunk + date anchors → MiniC
   what is already known, and escalates uncertain decisions for review.
 - **Apply** writes a bitemporal SQLite ledger, a daily `DREAMS.md`, and (for
   Hermes) reviewed proposals rather than direct edits.
+- **Recall** (turn time) answers the agent's question from the ledger with
+  receipts and caveats, and abstains when it does not know.
+- **Compact** fits the live profile to its budget: pinned slots stay, the
+  lowest-salience entry is evicted (and kept in the ledger) rather than blocking
+  a new fact.
 
 A deeper tour is in [docs/architecture.md](docs/architecture.md).
 
@@ -213,6 +297,12 @@ patterns (no-agent nightly pass, and gate + review turn).
 - **Reviewed writes.** New/contested Hermes entries go through
   `exports/review.json`; `apply-hermes` requires an explicit mode and creates a
   backup.
+- **Caveats travel with the fact.** A recalled memory that is superseded,
+  contested or older than the staleness window is flagged, so the agent can say
+  "I used to think X, but it changed" instead of stating stale facts.
+- **The profile is a view, not the store.** Evicting an entry from the live
+  profile never deletes it from the ledger; `forget` is the only destructive
+  operation and it tombstones.
 
 The full data-flow and threat model are in [docs/privacy.md](docs/privacy.md).
 
@@ -240,25 +330,32 @@ minicpm-dream doctor
 minicpm-dream setup [--download|--check|--list-models]
 minicpm-dream ingest --source hermes --window day --out episodes.jsonl
 minicpm-dream run --source hermes --window day [--quality|--fast] [--dry-run] [--apply-hermes]
+minicpm-dream run --source claude_code --include-tool-messages --incremental
 minicpm-dream review list|show|approve|reject
 minicpm-dream export [--apply-hermes]
 minicpm-dream gate
+minicpm-dream serve                 # MCP stdio server (recall/remember/explain/forget)
+minicpm-dream recall "query" [--k 6] [--brief] [--stats] [--json]
+minicpm-dream remember "fact" --section projects --quote "the words"
+minicpm-dream compact [--apply-hermes]
 minicpm-dream search "query"
 minicpm-dream explain <memory-id>
 minicpm-dream forget <memory-id> --yes
 minicpm-dream maintain --archive-days 180
 minicpm-dream index                 # build/refresh OpenBMB memory vectors
 minicpm-dream eval --suite evals/synthetic-days/full-day
+minicpm-dream eval-qa --suite evals/synthetic-days/full-day
 minicpm-dream generate-eval --out evals/generated/my-suite --days 10 --facts 120
 ```
 
 ## Status and limits
 
-**v1.0.0-rc1, code-complete for v1.** The nightly pass, reviewed Hermes writes,
-safety guards, OpenBMB retrieval, CLI, packaging and tests are in place. The
-remaining release-confidence work is an expanded 100–300 fact evaluation, an
-optimised multi-session Hermes pass, and macOS/Windows smoke tests. The release
-checklist and known gaps are in [docs/release.md](docs/release.md).
+**v1.1.0 — the read path.** The nightly pass, turn-time recall over MCP, profile
+compaction, salience gating, incremental ingest, the Claude Code adapter and the
+QA evaluation harness are in place. The remaining confidence work is a real-model
+`eval-qa` table, an expanded 100–300 fact evaluation, and macOS/Windows smoke
+tests. The release checklist and known gaps are in
+[docs/release.md](docs/release.md).
 
 Measured on the 24-message / 14-fact day: the optimised 2B pipeline reaches
 **0.80–0.97 F1** (best run P 0.93 / R 1.00 / F1 0.97 in 334 s), versus
@@ -277,9 +374,18 @@ Known limits:
   languages need their own eval fixtures.
 - No encryption at rest. The ledger and exports are `0600` in a `0700` directory;
   use full-disk encryption if that matters.
-- `MEMORY.md` is often near its 2,200-char limit; the tool reports pressure and
-  refuses over-budget writes, but does not automatically compact the live profile.
-- No HTTP server or web UI; the CLI and JSONL are the integration surface.
+- The live profile is still a 2,200-char view. Compaction now evicts
+  low-salience entries instead of freezing the file, but eviction is a policy:
+  `--no-compact` and `hermes.pinned_sections` are how you control it. Anything
+  evicted stays in the ledger with its history.
+- No HTTP transport: `serve` speaks MCP over stdio. The CLI covers hooks and
+  scripts; a network transport is not implemented.
+- Negative facts are not stored yet. A retraction ("I no longer use Ollama") is
+  rejected rather than recorded, so the agent cannot answer "what did I stop
+  using?" — the QA fixture marks this as an expected failure.
+- Recall is lexical by default (FTS5 with prefix matching). `--hybrid` adds
+  local embeddings; it is off in the server so a turn never waits for a 7 s
+  model load.
 - Fine-tuning is not part of v1. [docs/models.md](docs/models.md) records where
   zero-shot fails before any training work starts.
 
@@ -293,7 +399,8 @@ uv run mypy src
 
 The test suite uses a deterministic mock backend; integration tests that need a
 real model are marked `integration` and skipped when the GGUF/llama-server is
-absent.
+absent. `make demo` runs the offline pipeline with recall and the QA eval
+attached; `make demo-serve` does a one-shot MCP handshake.
 
 ## Scaling the evaluation and training
 

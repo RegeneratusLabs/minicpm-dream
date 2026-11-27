@@ -13,15 +13,19 @@ from pathlib import Path
 from typing import Any
 
 from . import __version__
-from .apply import apply_review_actions, build_and_write
+from .apply import apply_review_actions, build_and_write, build_bundle, write_bundle
 from .backends import BackendUnavailable
 from .backends.factory import make_backend
 from .config import Config, load_config
+from .eval.harness import run_case_ledger, run_suite
+from .eval.qa import run_qa_suite
 from .ingest import HermesAdapter
 from .models import MODELS, download_model, get_spec, human_size, model_status, resolve_model_path
 from .pipeline import collect_episodes, run_pass
+from .recall import RecallService
 from .retrieval.factory import build_retriever
 from .retrieval.openbmb import cache_status, download_models
+from .serve.server import build_recall_service, serve_stdio
 from .store.db import Store
 from .util.atomic import ensure_dir, write_text_atomic
 from .util.logging import setup_logging
@@ -76,6 +80,7 @@ def _apply_mode(cfg: Config, args: argparse.Namespace) -> None:
         cfg.extract.message_fallback = False
         cfg.extract.coverage_pass = False
         cfg.extract.profile_pass = False
+        cfg.extract.salience_gate = True
 
 
 def _window(args: argparse.Namespace, cfg: Config) -> tuple[datetime, datetime, str]:
@@ -252,6 +257,8 @@ def cmd_setup(args: argparse.Namespace) -> int:
 
 def cmd_ingest(args: argparse.Namespace) -> int:
     cfg = _load(args)
+    if getattr(args, "include_tool_messages", False):
+        cfg.ingest.include_tool_messages = True
     since, until, label = _window(args, cfg)
     episodes, stats = collect_episodes(
         cfg, source=args.source, since=since, until=until, input_path=args.input, limit=args.limit
@@ -278,6 +285,10 @@ def cmd_run(args: argparse.Namespace) -> int:
     _apply_mode(cfg, args)
     if getattr(args, "max_minutes", None):
         cfg.budgets.max_minutes = args.max_minutes
+    if getattr(args, "include_tool_messages", False):
+        cfg.ingest.include_tool_messages = True
+    if getattr(args, "no_compact", False):
+        cfg.hermes.compact_profile = False
     since, until, label = _window(args, cfg)
     backend = make_backend(cfg, mock_script=args.mock_script)
     try:
@@ -292,6 +303,7 @@ def cmd_run(args: argparse.Namespace) -> int:
             limit=args.limit,
             dry_run=args.dry_run,
             apply_hermes=args.apply_hermes,
+            incremental=bool(getattr(args, "incremental", False)),
         )
     finally:
         backend.close()
@@ -609,7 +621,6 @@ def cmd_generate_eval(args: argparse.Namespace) -> int:
 
 
 def cmd_eval(args: argparse.Namespace) -> int:
-    from .eval.harness import run_suite
 
     cfg = _load(args, backend=args.backend, model=args.model, model_path=args.model_path)
     _apply_mode(cfg, args)
@@ -657,6 +668,178 @@ def cmd_install_gate(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_serve(args: argparse.Namespace) -> int:
+    """Run the MCP stdio server. stdout carries JSON-RPC only."""
+    cfg = _load(args)
+    if args.stale_days is not None:
+        cfg.recall.stale_days = args.stale_days
+    return serve_stdio(
+        cfg,
+        hybrid=bool(args.hybrid or cfg.recall.hybrid),
+        stale_days=cfg.recall.stale_days,
+    )
+
+
+def cmd_recall(args: argparse.Namespace) -> int:
+    """One-shot recall, for shell hooks and scripts that are not MCP clients."""
+    cfg = _load(args)
+    service = build_recall_service(
+        cfg,
+        hybrid=bool(getattr(args, "hybrid", False) or cfg.recall.hybrid),
+        stale_days=cfg.recall.stale_days,
+    )
+    try:
+        result = service.recall(
+            args.query,
+            k=args.k,
+            sections=list(args.section) if getattr(args, "section", None) else None,
+            include_superseded=bool(getattr(args, "include_superseded", False)),
+        )
+    finally:
+        service.close()
+    if args.json:
+        print(json.dumps(result.as_dict(), indent=2, ensure_ascii=False, default=str))
+    elif args.brief:
+        for hit in result.hits:
+            print(hit.memory.get("text", ""))
+    else:
+        print(result.render())
+        if args.stats:
+            print(
+                f"# {len(result.hits)} hits, {result.elapsed_ms}ms, "
+                f"{'abstained' if result.abstained else 'ok'}, {result.detail}"
+            )
+    return 0
+
+
+def cmd_remember(args: argparse.Namespace) -> int:
+    cfg = _load(args)
+    service = RecallService(cfg)
+    try:
+        result = service.remember(
+            args.text,
+            kind=args.kind,
+            section=args.section,
+            quote=args.quote or "",
+            episode_id=args.episode_id or "",
+            valid_from=args.valid_from,
+        )
+    finally:
+        service.close()
+    if args.json:
+        print(json.dumps(result, indent=2, ensure_ascii=False, default=str))
+    elif result.get("ok"):
+        print(f"{result.get('op')}: {result.get('memory_id')} — {result.get('text')}")
+    else:
+        print("not stored: " + "; ".join(result.get("errors", [])), file=sys.stderr)
+    return 0 if result.get("ok") else 1
+
+
+def cmd_compact(args: argparse.Namespace) -> int:
+    """Fit the live profile to its budget: pinned slots stay, low-salience entries go."""
+    cfg = _load(args)
+    memory_limit, user_limit = cfg.hermes.memory_char_limit, cfg.hermes.user_char_limit
+    try:
+        hermes = HermesAdapter(cfg)
+        if hermes.inspect().available:
+            memory_limit, user_limit = hermes.read_memory_limits()
+    except Exception:  # noqa: BLE001
+        pass
+    with Store(cfg.paths.db) as store:
+        bundle = build_bundle(
+            store,
+            memory_path=Path(cfg.hermes.home) / cfg.hermes.memory_file,
+            user_path=Path(cfg.hermes.home) / cfg.hermes.user_file,
+            memory_limit=memory_limit,
+            user_limit=user_limit,
+            pinned_sections=cfg.hermes.pinned_sections,
+            compact=True,
+        )
+        if args.apply_hermes:
+            if cfg.hermes.write_mode != "apply":
+                print(
+                    "error: set hermes.write_mode = \"apply\" to write to the live profile",
+                    file=sys.stderr,
+                )
+                return 1
+            reports = apply_review_actions(
+                cfg, bundle.actions, memory_limit=memory_limit, user_limit=user_limit
+            )
+            print(json.dumps([r.as_dict() for r in reports], indent=2, ensure_ascii=False))
+            return 0
+        paths = write_bundle(bundle, cfg.exports_dir)
+    payload = {
+        "limits": bundle.limits,
+        "pressure": bundle.pressure,
+        "pinned": bundle.user_entries,
+        "evicted": bundle.evicted,
+        "skipped": bundle.skipped,
+        "actions": bundle.actions,
+        "paths": paths,
+    }
+    if args.json:
+        print(json.dumps(payload, indent=2, ensure_ascii=False, default=str))
+    else:
+        for target, value in bundle.pressure.items():
+            print(
+                f"{target}: {value.get('chars', 0)}/{value.get('limit', 0)} chars "
+                f"({float(value.get('fill', 0)):.0%}), evicted {value.get('evicted', 0)}, "
+                f"skipped {value.get('skipped', 0)}"
+            )
+        for item in bundle.evicted:
+            print(f"evicted [kept in ledger]: {item.get('text')}")
+        print(f"review: {paths.get('review', '')}")
+        print("(nothing was written to Hermes; pass --apply-hermes to apply)")
+    return 0
+
+
+def cmd_eval_qa(args: argparse.Namespace) -> int:
+    cfg = _load(args, backend=args.backend, model=args.model, model_path=args.model_path)
+    _apply_mode(cfg, args)
+    if args.k:
+        cfg.recall.k = args.k
+    backend = make_backend(cfg, mock_script=args.mock_script)
+    try:
+        report = run_qa_suite(
+            cfg,
+            backend,
+            args.suite or cfg.eval.suite,
+            run_ledger=run_case_ledger,
+            k=args.k or cfg.recall.k,
+            stale_days=cfg.recall.stale_days,
+            baseline=not args.no_baseline,
+        )
+    finally:
+        backend.close()
+    if args.json:
+        print(json.dumps(report, indent=2, ensure_ascii=False, default=str))
+        return 0
+    metrics = report["metrics"]
+    print(f"suite {report['suite']} · {report['cases']} case(s) · {metrics['items']} questions")
+    print(
+        f"with memory    {metrics['accuracy_with_memory']:.0%}  "
+        f"(retrieval hit {metrics['retrieval_hit_rate']:.0%})"
+    )
+    if metrics.get("accuracy_without_memory") is not None:
+        print(f"without memory {metrics['accuracy_without_memory']:.0%}")
+        print(f"delta          {float(metrics.get('delta') or 0):+.0%}")
+    print(
+        f"recall latency p50 {metrics['recall_p50_ms']}ms · p95 {metrics['recall_p95_ms']}ms"
+    )
+    for case in report["per_case"]:
+        if not case.get("items"):
+            continue
+        print(f"\n{case['case']}")
+        for item in case["per_item"]:
+            if item["ok_with_memory"]:
+                continue
+            print(f"  ✗ {item['question']}")
+            print(f"    want {item['must_include'] or item['must_include_any']}; got {item['answer_with_memory']!r}")
+            if item.get("note"):
+                print(f"    note: {item['note']}")
+    return 0
+
+
 # -- parser -----------------------------------------------------------------
 
 def build_parser() -> argparse.ArgumentParser:
@@ -685,8 +868,13 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser("ingest", help="read a window of transcripts")
     _add_common(p)
-    p.add_argument("--source", choices=["hermes", "jsonl"], default="hermes")
+    p.add_argument("--source", choices=["hermes", "jsonl", "claude_code"], default="hermes")
     p.add_argument("--input", help="JSONL path for --source jsonl")
+    p.add_argument(
+        "--include-tool-messages",
+        action="store_true",
+        help="keep tool output (often where an agent's real work is)",
+    )
     p.add_argument("--window", choices=["day", "week"], default="day")
     p.add_argument("--since")
     p.add_argument("--until")
@@ -696,8 +884,23 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser("run", help="run one consolidation pass")
     _add_common(p)
-    p.add_argument("--source", choices=["hermes", "jsonl"], default="hermes")
+    p.add_argument("--source", choices=["hermes", "jsonl", "claude_code"], default="hermes")
     p.add_argument("--input")
+    p.add_argument(
+        "--include-tool-messages",
+        action="store_true",
+        help="keep tool output (often where an agent's real work is)",
+    )
+    p.add_argument(
+        "--incremental",
+        action="store_true",
+        help="resume from the last successful pass instead of re-reading the whole window",
+    )
+    p.add_argument(
+        "--no-compact",
+        action="store_true",
+        help="refuse to evict low-salience profile entries when the profile is full",
+    )
     p.add_argument("--window", choices=["day", "week"], default="day")
     p.add_argument("--since")
     p.add_argument("--until")
@@ -785,6 +988,53 @@ def build_parser() -> argparse.ArgumentParser:
     mode.add_argument("--quality", action="store_true", help="slower, all-message fallback")
     mode.add_argument("--fast", action="store_true", help="fewer calls, lower recall")
     p.set_defaults(func=cmd_eval)
+
+
+    p = sub.add_parser("serve", help="run the MCP stdio server for turn-time recall")
+    _add_common(p)
+    p.add_argument("--hybrid", action="store_true", help="add MiniCPM embeddings (loads models)")
+    p.add_argument("--stale-days", type=int)
+    p.set_defaults(func=cmd_serve)
+
+    p = sub.add_parser("recall", help="ask the memory one question (for hooks and scripts)")
+    _add_common(p)
+    p.add_argument("query")
+    p.add_argument("--k", type=int, default=6)
+    p.add_argument("--section", action="append", help="restrict to a section (repeatable)")
+    p.add_argument("--include-superseded", action="store_true")
+    p.add_argument("--hybrid", action="store_true")
+    p.add_argument("--brief", action="store_true", help="text of each hit only")
+    p.add_argument("--stats", action="store_true", help="timing and abstention line")
+    p.set_defaults(func=cmd_recall)
+
+    p = sub.add_parser("remember", help="store one durable memory now, without a model call")
+    _add_common(p)
+    p.add_argument("text")
+    p.add_argument("--kind", default="fact")
+    p.add_argument("--section", default="projects")
+    p.add_argument("--quote", help="the verbatim source quote")
+    p.add_argument("--episode-id")
+    p.add_argument("--valid-from")
+    p.set_defaults(func=cmd_remember)
+
+    p = sub.add_parser("compact", help="fit the live profile to its budget with pinned slots")
+    _add_common(p)
+    p.add_argument("--apply-hermes", action="store_true")
+    p.set_defaults(func=cmd_compact)
+
+    p = sub.add_parser("eval-qa", help="measure answer accuracy with and without memory")
+    _add_common(p)
+    p.add_argument("--suite")
+    p.add_argument("--backend", choices=["llama_cpp", "openai", "mock"])
+    p.add_argument("--model")
+    p.add_argument("--model-path")
+    p.add_argument("--mock-script")
+    p.add_argument("--k", type=int)
+    p.add_argument("--no-baseline", action="store_true", help="skip the without-memory run")
+    mode = p.add_mutually_exclusive_group()
+    mode.add_argument("--quality", action="store_true")
+    mode.add_argument("--fast", action="store_true")
+    p.set_defaults(func=cmd_eval_qa)
 
     p = sub.add_parser("install-hermes-gate", help="install the Hermes cron gate script")
     _add_common(p)

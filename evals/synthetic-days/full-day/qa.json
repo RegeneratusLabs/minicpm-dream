@@ -1,0 +1,90 @@
+{
+  "suite": "full-day",
+  "note": "Hand-written questions answered only from memory: identity, preferences, a superseded project fact, an open loop, people, environment and a Chinese turn.",
+  "items": [
+    {
+      "question": "Where is Josh based?",
+      "must_include": ["brisbane"],
+      "gold_texts": ["Josh Thomson is a software developer based in Brisbane."]
+    },
+    {
+      "question": "What does Josh do for work?",
+      "must_include": ["developer"],
+      "gold_texts": ["Josh Thomson is a software developer based in Brisbane."]
+    },
+    {
+      "question": "What editor theme does Josh prefer?",
+      "must_include": ["dark mode"],
+      "gold_texts": ["Josh prefers dark mode in all editors."]
+    },
+    {
+      "question": "How does Josh feel about long explanations?",
+      "must_include": ["dislike"],
+      "gold_texts": ["Josh dislikes long explanations."]
+    },
+    {
+      "question": "Which database does the miniCPM-memory ledger use now?",
+      "must_include": ["postgres"],
+      "must_exclude": ["sqlite"],
+      "gold_texts": [
+        "The miniCPM-memory ledger was moved from SQLite to PostgreSQL on 2026-11-04.",
+        "The miniCPM-memory project uses PostgreSQL for its ledger."
+      ]
+    },
+    {
+      "question": "Which Python version does the miniCPM-memory project use?",
+      "must_include": ["3.12"],
+      "gold_texts": ["The miniCPM-memory project uses Python 3.12 for its ledger."]
+    },
+    {
+      "question": "Which model does Josh use for local extraction?",
+      "must_include": ["minicpm5-2b"],
+      "gold_texts": ["Josh started using MiniCPM5-2B for local extraction on 2026-11-03."]
+    },
+    {
+      "question": "When is the dentist appointment?",
+      "must_include": ["2026-11-06"],
+      "gold_texts": ["Josh has a dentist appointment on 2026-11-06 at 3pm."]
+    },
+    {
+      "question": "Who is Cameron?",
+      "must_include": ["brother"],
+      "gold_texts": ["Cameron is Josh's brother."]
+    },
+    {
+      "question": "Does Cameron prefer tea or coffee?",
+      "must_include": ["tea"],
+      "gold_texts": ["Cameron prefers tea over coffee."]
+    },
+    {
+      "question": "What hardware is the homelab host?",
+      "must_include": ["optiplex"],
+      "gold_texts": ["The homelab host is an OptiPlex 7060 with 16 GB of RAM."]
+    },
+    {
+      "question": "How much RAM does the homelab host have?",
+      "must_include": ["16"],
+      "gold_texts": ["The homelab host is an OptiPlex 7060 with 16 GB of RAM."]
+    },
+    {
+      "question": "What operating system does the homelab run?",
+      "must_include": ["ubuntu"],
+      "gold_texts": ["The homelab runs Ubuntu 24.04."]
+    },
+    {
+      "question": "Is the project local-first by default?",
+      "must_include": ["local-first"],
+      "gold_texts": ["The project will stay local-first by default; cloud backends are opt-in."]
+    },
+    {
+      "question": "What is Josh's favourite tea?",
+      "must_include_any": ["jasmine", "茉莉", "花茶"],
+      "gold_texts": ["Josh's favourite tea is jasmine tea."]
+    },
+    {
+      "question": "Which local inference tool did Josh stop using?",
+      "must_include": ["ollama"],
+      "note": "Known gap: retractions are rejected as new facts, so this is expected to fail until negatives are stored."
+    }
+  ]
+}

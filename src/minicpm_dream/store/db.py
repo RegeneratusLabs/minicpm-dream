@@ -271,7 +271,9 @@ class Store:
             return self.active_memories(limit=limit)
         rows: list[sqlite3.Row] = []
         if self.fts_enabled:
-            match = " OR ".join('"' + t.replace('"', '""') + '"' for t in toks)
+            # Prefix match so "prefer" also finds "prefers" and "migrat" finds
+            # "migrated"; unicode61 has no stemmer, and recall quality depends on it.
+            match = " OR ".join(f"{t}*" for t in toks)
             try:
                 rows = self.conn.execute(
                     """SELECT m.*, bm25(memories_fts) AS rank

@@ -212,3 +212,11 @@ that approval queue. Prefer proposals in that setup.
 | `replace anchor matched 0 entries` | memory changed since export | re-run `export`, then apply |
 | gate always wakes | stale `review.json` with actions | apply/reject them, then `export` again |
 | no episodes | wrong timezone or window | pass `--since/--until` or check `config.timezone` |
+
+## Beyond Hermes
+
+Hermes is the first adapter, not the only surface. `minicpm-dream serve` exposes
+the same ledger over MCP (stdio), and `minicpm-dream recall` covers shell hooks,
+so agents that are not Hermes — Claude Code, Cursor, DSH — get turn-time memory
+without touching `MEMORY.md`. See `examples/claude-code/` and
+[docs/architecture.md](architecture.md#8-recall-and-the-mcp-server-recall-serve).

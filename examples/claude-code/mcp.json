@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "minicpm-dream": {
+      "command": "minicpm-dream",
+      "args": ["serve"]
+    }
+  }
+}

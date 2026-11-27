@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import time
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -17,15 +17,16 @@ from .config import Config
 from .consolidate.reconcile import Decision
 from .consolidate.sequential import reconcile_and_apply
 from .extract import Candidate, extract_all, verify_all
-from .ingest import Episode, EpisodeFilter, HermesAdapter, read_jsonl
+from .ingest import Episode, EpisodeFilter, HermesAdapter, iter_claude_code, read_jsonl
 from .prepare import build_chunks
+from .prepare.salience import gate_chunks
 from .retrieval.factory import build_retriever
 from .store.db import Store
 from .synth.dream_md import append_section, render_section
 from .util.ids import new_id, stable_hash
 from .util.locking import FileLock
 from .util.logging import get_logger
-from .util.timeutil import iso_utc, utc_now
+from .util.timeutil import iso_utc, parse_timestamp, utc_now
 
 log = get_logger("pipeline")
 
@@ -85,8 +86,16 @@ def collect_episodes(
         if not input_path:
             raise ValueError("--input is required for source=jsonl")
         generator = read_jsonl(input_path, tz=cfg.timezone)
+    elif source == "claude_code":
+        generator = iter_claude_code(
+            cfg.ingest.claude_code_dir,
+            tz=cfg.timezone,
+            include_tool_results=cfg.ingest.include_tool_messages,
+            since=since,
+            until=until,
+        )
     else:
-        raise ValueError(f"unknown source {source!r}; use hermes or jsonl")
+        raise ValueError(f"unknown source {source!r}; use hermes, jsonl or claude_code")
 
     filt = EpisodeFilter(cfg.ingest, cfg.privacy)
     kept: list[Episode] = []
@@ -116,6 +125,7 @@ def run_pass(
     limit: int | None = None,
     dry_run: bool = False,
     apply_hermes: bool = False,
+    incremental: bool = False,
 ) -> RunResult:
     run_id = new_id("run")
     started = utc_now()
@@ -127,6 +137,22 @@ def run_pass(
         temp_db = Path(cfg.paths.data_dir) / f".dryrun-{run_id}.db"
     db_path = temp_db or Path(cfg.paths.db)
     store = Store(db_path)
+    if incremental:
+        # Resume where the last successful pass stopped (minus an overlap, so a
+        # message written late is not lost). Re-extracting a whole day every night
+        # is the single biggest avoidable cost in the pass.
+        cursor = store.kv_get(f"cursor:{source}")
+        if cursor:
+            try:
+                resume = parse_timestamp(cursor, cfg.timezone) - timedelta(
+                    minutes=cfg.budgets.incremental_overlap_minutes
+                )
+                if resume > since:
+                    since = resume
+                    window_start = iso_utc(since)
+                    window_label = f"incremental from {window_start}"
+            except (TypeError, ValueError):
+                pass
     result = RunResult(
         run_id=run_id,
         status="running",
@@ -189,7 +215,22 @@ def run_pass(
             chunks = build_chunks(
                 episodes, extract=cfg.extract, ingest=cfg.ingest, tz=cfg.timezone
             )
+            gate_stats = None
+            if cfg.extract.salience_gate and chunks:
+                chunks, gate_stats = gate_chunks(
+                    chunks, threshold=cfg.extract.salience_threshold
+                )
+                counters["chunks_skipped_by_gate"] = gate_stats.skipped
+                counters["tokens_skipped_by_gate"] = gate_stats.skipped_tokens
             counters["chunks"] = len(chunks)
+            if not chunks:
+                notes.append("salience gate skipped every chunk; nothing to extract")
+                counters["duration_s"] = round(time.monotonic() - t0, 1)
+                result.status = "empty"
+                result.counters = counters
+                result.usage = usage
+                store.finish_run(run_id, status="empty", counters=counters, usage=usage)
+                return result
 
             extraction, extract_usage = extract_all(
                 backend, chunks, cfg.extract, max_calls=cfg.consolidate.max_calls
@@ -313,6 +354,8 @@ def run_pass(
                     user_path=Path(cfg.hermes.home) / cfg.hermes.user_file,
                     memory_limit=memory_limit,
                     user_limit=user_limit,
+                    pinned_sections=cfg.hermes.pinned_sections,
+                    compact=cfg.hermes.compact_profile,
                 )
                 export_paths: dict[str, str] = {}
             else:
@@ -321,6 +364,11 @@ def run_pass(
                 )
             result.bundle = bundle.as_review()
             result.export_paths = export_paths
+            if bundle.evicted:
+                notes.append(
+                    f"profile compaction evicted {len(bundle.evicted)} lower-salience entries; "
+                    "the ledger keeps them with full history"
+                )
             pressure = bundle.pressure or {}
             if any(float((value or {}).get("fill", 0)) >= 0.85 for value in pressure.values()) or bundle.skipped:
                 notes.append(
@@ -378,6 +426,8 @@ def run_pass(
             result.counters = counters
             result.usage = usage
             result.status = "ok"
+            if incremental and not dry_run and result.bundle is not None:
+                store.kv_set(f"cursor:{source}", window_end)
             store.finish_run(run_id, status="ok", counters=counters, usage=usage)
             return result
     except Exception as exc:  # noqa: BLE001

@@ -1,0 +1,31 @@
+{
+  "suite": "basic",
+  "note": "Hand-written questions answered only from memory. `must_include` terms must all appear; ISO dates also match equivalent written dates.",
+  "items": [
+    {
+      "question": "What editor theme does the user prefer?",
+      "must_include": ["dark mode"],
+      "gold_texts": ["The user prefers dark mode in all editors."]
+    },
+    {
+      "question": "Which database does the miniCPM-memory project use for storage?",
+      "must_include": ["sqlite"],
+      "gold_texts": ["The miniCPM-memory project uses Python 3.12 and SQLite for storage."]
+    },
+    {
+      "question": "Which Python version does the miniCPM-memory project use?",
+      "must_include": ["3.12"],
+      "gold_texts": ["The miniCPM-memory project uses Python 3.12 and SQLite for storage."]
+    },
+    {
+      "question": "When is the dentist appointment?",
+      "must_include": ["2026-11-06"],
+      "gold_texts": ["The user has a dentist appointment on 2026-11-06 at 3pm."]
+    },
+    {
+      "question": "Which local inference tool did the user stop using?",
+      "must_include": ["ollama"],
+      "note": "Known gap: retractions are rejected as new facts, so this is expected to fail until negatives are stored."
+    }
+  ]
+}

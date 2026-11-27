@@ -5,7 +5,12 @@
 | Artifact | Status |
 |---|---|
 | `minicpm-dream` Python package (wheel + sdist) | builds |
-| CLI: run, ingest, review, export, gate, search, explain, forget, maintain, index, eval, generate-eval, install-hermes-gate | implemented |
+| CLI: run, ingest, serve, recall, remember, compact, review, export, gate, search, explain, forget, maintain, index, eval, eval-qa, generate-eval, install-hermes-gate | implemented |
+| MCP stdio server (`serve/`, stdlib only) | implemented |
+| Turn-time recall with receipts, abstention and caveats (`recall/`) | implemented |
+| Pinned-slot profile compaction (`apply/profile.py`) | implemented |
+| Claude Code adapter + tolerant JSONL (`ingest/`) | implemented |
+| Salience gate and incremental ingest cursor | implemented |
 | `python -m minicpm_dream` | implemented |
 | Default model registry + SHA-256 download | implemented |
 | OpenBMB retrieval stack (optional extra) | implemented |
@@ -28,10 +33,16 @@
 - [x] reviewed Hermes write path with lock, backup, and char limits
 - [x] cron wake gate
 - [x] release, security, contributing docs
+- [x] turn-time recall: MCP handshake, tool calls, receipts, abstention, caveats
+- [x] profile compaction: pinned slots, eviction, human entries untouched
+- [x] QA eval harness with a with/without-memory control (mock numbers only)
 - [~] 30-fact generated suite: P0.784 / R0.967 / F1 0.866 / temporal 1.00 in 634 s
 - [ ] 100–300 fact evaluation: the 120-fact CPU quality attempt was stopped after
       48 min in extraction; run on a GPU or with `--fast`
 - [ ] macOS/Windows runtime smoke test
+- [ ] real-backend `eval-qa` table on `full-day` and one real day (the control
+      must stay near zero; a high without-memory score means the answerer is
+      guessing)
 
 The unchecked items are confidence work, not missing implementation. Do not claim
 "production benchmark" until the first one is run.
@@ -41,13 +52,18 @@ The unchecked items are confidence work, not missing implementation. Do not clai
 - The 2B is stochastic: the 14-fact suite ranged 0.80–0.97 F1 across seeds.
 - Quality mode costs ~5–7 minutes for a dense day on the reference CPU; cloud is
   ~10–20× faster. A 120-fact suite does not finish in under an hour on this CPU.
-- `MEMORY.md` is often near its 2,200-char limit; the tool reports pressure and
-  refuses over-budget writes, but does not automatically compact the live profile.
+- `MEMORY.md` is a 2,200-char view. Compaction evicts lower-salience entries
+  (reported, never deleted from the ledger); pinned and human-written entries are
+  never evicted. This is policy, so `--no-compact` and `pinned_sections` matter.
 - No encryption at rest; rely on disk encryption and a dedicated OS account.
 - The Hermes `state.db` is an internal schema; the adapter introspects and degrades,
   but a future release can still require an adapter update.
 - The OpenBMB Light models are optional and separately licensed for commercial use.
-- No HTTP server or web UI; the CLI and JSONL are the integration surface.
+- No HTTP transport and no web UI: `serve` is MCP over stdio, and the CLI is the
+  hook/script surface.
+- Retractions are still rejected as new facts, so negative facts ("I stopped
+  using Ollama") cannot be recalled. The QA fixture marks this as an expected
+  failure.
 
 ## Publishing
 

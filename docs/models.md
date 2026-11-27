@@ -147,6 +147,36 @@ support `json_schema`). Evidence arrays arrive as strings, not objects; the
 validator normalizes that shape. Both models receive the same prompt and the
 same deterministic validators.
 
+### Usefulness, not sentence similarity
+
+Extraction F1 answers "did a sentence come out that resembles the gold list?".
+It does not answer "when the user asks, does the agent get it right?", and the
+two can move in opposite directions (a well-worded wrong fact scores well on
+containment and poisons the answer). `eval-qa` is the product metric:
+
+```bash
+minicpm-dream eval-qa --suite evals/synthetic-days/full-day --backend llama_cpp
+minicpm-dream eval-qa --suite evals/generated/fact-30 --backend llama_cpp --quality
+```
+
+It builds the ledger from the transcript, asks each question through the real
+recall path, and answers with and without the recalled block. Report:
+
+- `accuracy_with_memory` and `accuracy_without_memory` (the control should be
+  ~0, not "wrong facts"), and the delta;
+- `retrieval_hit_rate`: the gold fact was in the top-k at all;
+- `recall_p50_ms` / `recall_p95_ms` on the fast path;
+- prompt tokens with and without memory.
+
+A suite can ship `qa.json` (hand-written questions) or fall back to cloze
+questions derived from `gold.json`. Hand-written questions are the honest ones;
+auto-generated cloze items are a smoke test.
+
+The only measured numbers committed so far are the offline mock demo (scripted
+stand-in answerer): 80% with memory, 0% without, recall p50 0.34 ms on the
+5-question `basic` fixture. A real-backend table belongs here once it has been
+run; do not quote the mock as model quality.
+
 What the real run actually did:
 
 - extracted 3 durable memories and rejected the retraction ("no longer uses

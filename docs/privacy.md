@@ -86,6 +86,15 @@ paths, or a Hermes write without the explicit apply path.
   database dumps, and shell history.
 - `privacy.retention_days` is reserved; v1 does not auto-purge.
 
+## The MCP surface
+
+`minicpm-dream serve` is a stdio server: it opens no port, makes no network
+call, and runs as your user against the same ledger file. The agent's tools are
+`recall`, `remember`, `explain`, `forget` and `memory_status`. `remember` applies
+the same secret and meta-state guards as the nightly pass; `forget` requires
+`confirm: true` and leaves a tombstone. Recall returns receipts and caveats, so
+a stale or contested fact is never presented as current truth.
+
 ## Threat model
 
 | Threat | Mitigation |

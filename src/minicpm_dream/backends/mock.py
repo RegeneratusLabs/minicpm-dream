@@ -46,11 +46,25 @@ class MockBackend:
         if queue:
             text = queue.popleft()
         else:
-            text = self._default(task)
+            text = self._default(task, messages)
         return Completion(text=text, model=self.model, usage={"prompt_tokens": 0, "completion_tokens": 0})
 
     @staticmethod
-    def _default(task: str) -> str:
+    def _default(task: str, messages: list[dict[str, str]] | None = None) -> str:
+        if task == "ANSWER":
+            # Stand-in answerer for the offline demo: read the memory block back.
+            # This proves the QA harness end to end; it is not a model.
+            for message in messages or []:
+                content = message.get("content", "")
+                if "MEMORY\n" not in content:
+                    continue
+                block = content.split("MEMORY\n", 1)[1].split("\n\nQUESTION", 1)[0]
+                if block.strip() in {"", "(no memory available)"}:
+                    return "UNKNOWN"
+                for line in block.splitlines():
+                    if line.strip().startswith("- "):
+                        return line.strip()[2:]
+            return "UNKNOWN"
         if task == "EXTRACT":
             return json.dumps({"items": []})
         if task == "VERIFY":

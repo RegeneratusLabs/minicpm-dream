@@ -7,7 +7,7 @@ DR := $(VENV)/bin/minicpm-dream
 DEMO_DATA ?= ./demo-data
 EVAL_DATA ?= ./eval-data
 
-.PHONY: demo demo-real test lint typecheck check eval build release-check clean
+.PHONY: demo demo-real demo-serve test lint typecheck check eval eval-qa build release-check clean
 
 demo:
 	rm -rf $(DEMO_DATA)
@@ -20,6 +20,12 @@ demo:
 		--since 2026-11-04T14:00:00+00:00 \
 		--until 2026-11-05T14:00:00+00:00
 	$(DR) search "dentist" --data-dir $(DEMO_DATA)
+	$(DR) recall "what editor theme does the user prefer" --data-dir $(DEMO_DATA)
+	$(DR) eval-qa \
+		--suite evals/synthetic-days/basic \
+		--backend mock \
+		--mock-script evals/synthetic-days/basic/mock_script.json \
+		--data-dir $(DEMO_DATA)-qa
 	@echo
 	@echo "diary:   $(DEMO_DATA)/DREAMS.md"
 	@echo "review:  $(DEMO_DATA)/exports/review.json"
@@ -44,6 +50,20 @@ typecheck:
 	$(VENV)/bin/mypy src
 
 check: lint typecheck test
+
+demo-serve:
+	@printf '%s\n' \
+		'{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18"}}' \
+		'{"jsonrpc":"2.0","id":2,"method":"tools/list"}' \
+		| $(DR) serve --data-dir $(DEMO_DATA)
+
+eval-qa:
+	rm -rf $(EVAL_DATA)-qa
+	$(DR) eval-qa \
+		--suite evals/synthetic-days/basic \
+		--backend mock \
+		--mock-script evals/synthetic-days/basic/mock_script.json \
+		--data-dir $(EVAL_DATA)-qa
 
 eval:
 	rm -rf $(EVAL_DATA)

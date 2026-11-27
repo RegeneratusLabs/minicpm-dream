@@ -7,6 +7,8 @@ turns raw session history into a small, auditable, bitemporal memory.
 ## Pipeline
 
 ```
+ recall ◄──────────── store (read path, ~1 ms, MCP/CLI)
+   ▲
  ingest ──► prepare ──► extract ──► verify ──► retrieve ──► reconcile ──► apply
    │           │           │           │           │            │            │
  filters     chunks      typed       entailment   hybrid       ADD/UPDATE   SQLite
@@ -148,6 +150,49 @@ version, and run id.
   a lock, checks the file mtime, writes a backup, and refuses a result over the
   character limit.
 
+### 8. Recall and the MCP server (`recall/`, `serve/`)
+
+The read path an agent uses mid-conversation. It is deliberately separate from
+`consolidate/retrieve.py`:
+
+- **Fast by default.** FTS5 with prefix matching (`prefer*` finds "prefers"),
+  plus a lexical coverage score. No embedding model, no reranker, no model
+  call, so a hit costs well under a millisecond. `--hybrid` opts into the
+  vectors; the server keeps that off so a turn never waits for a 7 s model load.
+- **Receipts.** Each hit carries the verbatim quote and the episode it came
+  from, so the agent can cite what it knows.
+- **Caveats.** A hit is flagged `superseded`, `contested` (pending proposal),
+  `stale` (older than `recall.stale_days`, durable sections excluded), or
+  `unverified` (no checked quote), and `caveat` explains what to do about it.
+- **Abstention.** If less than `recall.min_coverage` of the question's terms are
+  in the best memory, the result is `abstained` with a reason. "I do not know"
+  is a valid answer; the least-bad row is not.
+- **Writes without a model.** `remember` is the turn-time write: length, secret
+  and meta-state guards, exact-duplicate NOOP, near-duplicate UPDATE that
+  supersedes (never deletes), and an `ops` row. It is how the agent records
+  something now instead of waiting for the nightly pass.
+
+`serve/` is a stdlib-only MCP server over stdio: `initialize`, `tools/list`,
+`tools/call`, `ping`, with tools `recall`, `remember`, `explain`, `forget` and
+`memory_status`. `forget` requires `confirm: true`. stdout carries JSON-RPC
+only; logs go to stderr.
+
+### 9. Profile planning (`apply/profile.py`)
+
+`MEMORY.md` / `USER.md` are views of the ledger with a hard character budget.
+`plan_profile` decides the final text and the minimal diff:
+
+1. Live entries that match an active memory inherit its salience.
+2. Entries in `hermes.pinned_sections` (default `identity`, `preferences`) are
+   pinned, and so is any entry that came from the user's own hand.
+3. Active memories fill the remaining budget in salience order.
+4. If a higher-salience memory does not fit, the lowest-salience **non-pinned**
+   entry is evicted — but only if it is less salient than the incoming memory.
+   With `compact = false`, nothing already in the file is touched and the new
+   entry is reported under `skipped` instead.
+5. Every drop is reported under `evicted` and in `DREAMS.md`. The ledger row and
+   its history are untouched.
+
 ## Data model
 
 See `src/minicpm_dream/store/schema.sql`. The important tables:
@@ -180,6 +225,11 @@ Bitemporal semantics:
 5. Hermes writes require an explicit mode, a backup, and a lock.
 6. Secrets are redacted before prompting and rejected before writing.
 7. The gate reads only the ledger, never the Hermes state database.
+8. A recall hit has a receipt or an explicit flag; nothing is presented as
+   current truth without one.
+9. Recall abstains rather than guessing when the question is not covered.
+10. Profile eviction never deletes a ledger row, never touches a pinned or
+    human-written entry, and is always reported.
 
 ## Extension points
 
@@ -191,3 +241,9 @@ Bitemporal semantics:
   validator. Keep the schema small; grammar-constrained decoding guarantees
   syntax, not meaning.
 - **Retrieval**: `Retriever.retrieve()` is the seam for embeddings/rerankers.
+- **Read path**: `RecallService` is the seam for a different recall policy; the
+  MCP tool schemas live in `serve/tools.py`, so adding a tool is one dict plus a
+  branch in `call_tool`.
+- **New harness**: besides `ingest/base.py`, `ingest/content.py` flattens the
+  message-block shapes that harnesses write, so most adapters are a parser over
+  `flatten_content`.

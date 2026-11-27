@@ -38,11 +38,16 @@ _KIND_WEIGHT = {
 _SECTION_BONUS = {"identity": 0.15, "preferences": 0.12, "projects": 0.08, "people": 0.05}
 
 
+def salience_for(kind: str, section: str, confidence: float, evidence_count: int) -> float:
+    """Shared salience formula for nightly candidates and turn-time writes."""
+    evidence = min(1.0, evidence_count / 2.0)
+    weight = _KIND_WEIGHT.get(kind, 0.5) + _SECTION_BONUS.get(section, 0.0)
+    return round(min(1.0, 0.5 * confidence + 0.2 * evidence + 0.3 * min(1.0, weight)), 3)
+
+
 def salience(decision: Decision) -> float:
     cand = decision.candidate
-    evidence = min(1.0, len(cand.evidence) / 2.0)
-    weight = _KIND_WEIGHT.get(cand.kind, 0.5) + _SECTION_BONUS.get(cand.section, 0.0)
-    return round(min(1.0, 0.5 * cand.confidence + 0.2 * evidence + 0.3 * min(1.0, weight)), 3)
+    return salience_for(cand.kind, cand.section, cand.confidence, len(cand.evidence))
 
 
 def _candidate_payload(decision: Decision) -> dict[str, Any]:

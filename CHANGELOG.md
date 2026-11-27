@@ -1,5 +1,39 @@
 # Changelog
 
+## 1.1.0 — the read path
+
+The nightly pass was a diary nobody read. This release makes memory something an
+agent uses mid-conversation.
+
+- `minicpm-dream serve`: stdlib-only MCP stdio server with `recall`, `remember`,
+  `explain`, `forget` and `memory_status`. Works with Claude Code, Cursor, DSH
+  and any other MCP client; no new dependency.
+- `minicpm-dream recall` / `remember`: the same lookup and write for shell hooks
+  and scripts that are not MCP clients.
+- Turn-time recall (`recall/`): FTS5 with prefix matching, lexical coverage
+  scoring, no model and no reranker, sub-millisecond on a small ledger. Every
+  hit carries its receipts and flags (`superseded`, `contested`, `stale`,
+  `unverified`) with a caveat, and the service abstains instead of guessing.
+- `eval-qa`: end-to-end QA evaluation. Builds a ledger from the transcript, asks
+  questions through the real recall path, and scores answers with and without
+  memory, plus retrieval hit rate, recall latency and tokens. Shipped `qa.json`
+  fixtures for `basic` and `full-day`.
+- Profile compaction (`apply/profile.py`): pinned sections
+  (`identity`, `preferences`) plus human-written entries are never evicted;
+  low-salience entries are evicted instead of refusing new facts. Every eviction
+  is reported in `review.json` and `DREAMS.md`; the ledger keeps the history.
+- `minicpm-dream compact`, and known memory pressure now gets an explicit
+  eviction note rather than a silent skip.
+- Cost: `extract.salience_gate` skips chunks with no durable cues before the
+  model call, and `run --incremental` resumes from the last successful pass
+  (30-minute overlap) instead of re-extracting the whole day.
+- Ingest: `--source claude_code` reads `~/.claude/projects/**/*.jsonl`, with
+  tool results (the actual work) and sidechain turns tagged as `subagent`; the
+  JSONL adapter accepts nested OpenAI/Anthropic-style `message.content` blocks.
+- Removed the declared-but-empty `server` extra (FastAPI/uvicorn); the MCP
+  server needs neither.
+- 118 tests; ruff and mypy clean.
+
 ## 1.0.0-rc1 — release candidate
 
 - `python -m minicpm_dream` entrypoint; clean-wheel install verified.

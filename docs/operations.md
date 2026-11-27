@@ -141,6 +141,28 @@ field, set `model.disable_thinking = false` and disable thinking server-side.
 
 ## Scheduling
 
+`--incremental` resumes after the last successful pass (with a 30-minute
+overlap, `budgets.incremental_overlap_minutes`) instead of re-extracting the
+whole window; a pass with nothing new finishes in well under a second.
+`--fast` turns on the salience gate, which skips chunks with no durable cues
+before any model call. Together they are what makes a nightly pass cheap enough
+to leave on: measure a normal day before running `--quality` on a cron.
+
+If you set `ingest.trusted_sources` explicitly in `config.toml`, add the adapters
+you use (`jsonl`, `claude-code`); the allow-list replaces the built-in default
+rather than extending it, and a missing entry shows up as `dropped_source` in
+the ingest counters.
+
+## Turn-time recall
+
+`minicpm-dream serve` is an MCP server on stdio; point your agent at it (see
+`examples/claude-code/`). It opens the ledger read-only-ish, never loads the
+embedding model unless `--hybrid` is passed, and answers in about a millisecond.
+Shell hooks can call `minicpm-dream recall "<prompt>" --k 6 --stats` instead.
+
+The server and a nightly pass can run at the same time: SQLite is in WAL mode
+and the writer holds `run.lock`, so reads never block.
+
 ### Hermes cron
 
 See `docs/hermes-integration.md`. The short version:
@@ -163,7 +185,7 @@ Type=oneshot
 WorkingDirectory=/home/you/miniCPM-memory
 Environment=MINICPM_DREAM_DATA_DIR=/home/you/.local/share/minicpm-dream
 Environment=LLAMA_SERVER=/home/you/llama.cpp/build/bin/llama-server
-ExecStart=/home/you/miniCPM-memory/.venv/bin/minicpm-dream run --source hermes --window day
+ExecStart=/home/you/miniCPM-memory/.venv/bin/minicpm-dream run --source hermes --window day --fast --incremental
 Nice=10
 IOSchedulingClass=idle
 ```

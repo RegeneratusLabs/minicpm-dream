@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import copy
 import json
+import shutil
 import tempfile
 import time
+from datetime import timedelta
 from pathlib import Path
 from typing import Any
 
@@ -38,6 +40,49 @@ def load_gold(case: Path) -> dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+def run_case_ledger(
+    cfg: Config, backend: Backend, case: Path
+) -> tuple[Config, Any, str, float]:
+    """Build a throwaway ledger for one case. Caller removes the directory."""
+    td = tempfile.mkdtemp(prefix=f"minicpm-dream-eval-{case.name}-")
+    run_cfg = copy.deepcopy(cfg)
+    run_cfg.paths = PathsCfg(data_dir=td)
+    run_cfg.hermes.home = str(Path(td) / "hermes")
+    run_cfg.hermes.write_mode = "proposals"
+    run_cfg.synth.diary_path = str(Path(td) / "DREAMS.md")
+    run_cfg.resolve()
+    (Path(run_cfg.hermes.home) / "memories").mkdir(parents=True, exist_ok=True)
+    for name in ("MEMORY.md", "USER.md"):
+        (Path(run_cfg.hermes.home) / "memories" / name).write_text("", encoding="utf-8")
+
+    episodes = [
+        json.loads(line)
+        for line in (case / "episodes.jsonl").read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    # Eval measures quality, not the nightly write budget. Scale caps with
+    # the suite so a 100-300 fact run is not silently truncated.
+    run_cfg.consolidate.max_changes_per_run = max(100, len(episodes))
+    run_cfg.consolidate.max_new_per_run = max(100, len(episodes))
+    run_cfg.consolidate.max_calls = max(200, len(episodes) * 4)
+    run_cfg.budgets.max_minutes = max(30.0, len(episodes) * 2.0)
+    stamps = [parse_timestamp(item.get("timestamp"), run_cfg.timezone) for item in episodes]
+    since = min(stamps).replace(microsecond=0) - timedelta(seconds=1)
+    until = max(stamps).replace(microsecond=0) + timedelta(seconds=1)
+
+    started = time.monotonic()
+    result = run_pass(
+        run_cfg,
+        backend,
+        source="jsonl",
+        since=since,
+        until=until,
+        window_label=f"eval:{case.name}",
+        input_path=str(case / "episodes.jsonl"),
+    )
+    return run_cfg, result, td, time.monotonic() - started
+
+
 def _score(gold: str, memories: list[dict[str, Any]]) -> tuple[float, dict[str, Any] | None]:
     best: tuple[float, dict[str, Any] | None] = (0.0, None)
     for memory in memories:
@@ -49,48 +94,8 @@ def _score(gold: str, memories: list[dict[str, Any]]) -> tuple[float, dict[str, 
 
 
 def evaluate_case(cfg: Config, backend: Backend, case: Path) -> dict[str, Any]:
-    with tempfile.TemporaryDirectory(prefix=f"minicpm-dream-eval-{case.name}-") as td:
-        run_cfg = copy.deepcopy(cfg)
-        run_cfg.paths = PathsCfg(data_dir=td)
-        run_cfg.hermes.home = str(Path(td) / "hermes")
-        run_cfg.hermes.write_mode = "proposals"
-        run_cfg.synth.diary_path = str(Path(td) / "DREAMS.md")
-        run_cfg.resolve()
-        (Path(run_cfg.hermes.home) / "memories").mkdir(parents=True, exist_ok=True)
-        for name in ("MEMORY.md", "USER.md"):
-            (Path(run_cfg.hermes.home) / "memories" / name).write_text("", encoding="utf-8")
-
-        episodes = [
-            json.loads(line)
-            for line in (case / "episodes.jsonl").read_text(encoding="utf-8").splitlines()
-            if line.strip()
-        ]
-        # Eval measures quality, not the nightly write budget. Scale caps with
-        # the suite so a 100-300 fact run is not silently truncated.
-        run_cfg.consolidate.max_changes_per_run = max(100, len(episodes))
-        run_cfg.consolidate.max_new_per_run = max(100, len(episodes))
-        run_cfg.consolidate.max_calls = max(200, len(episodes) * 4)
-        run_cfg.budgets.max_minutes = max(30.0, len(episodes) * 2.0)
-        stamps = [parse_timestamp(item.get("timestamp"), run_cfg.timezone) for item in episodes]
-        since = min(stamps).replace(microsecond=0)
-        until = max(stamps).replace(microsecond=0)
-        from datetime import timedelta
-
-        since = since - timedelta(seconds=1)
-        until = until + timedelta(seconds=1)
-
-        started = time.monotonic()
-        result = run_pass(
-            run_cfg,
-            backend,
-            source="jsonl",
-            since=since,
-            until=until,
-            window_label=f"eval:{case.name}",
-            input_path=str(case / "episodes.jsonl"),
-        )
-        duration = time.monotonic() - started
-
+    run_cfg, result, td, duration = run_case_ledger(cfg, backend, case)
+    try:
         with Store(run_cfg.paths.db) as store:
             active = store.active_memories()
         counters = result.counters
@@ -130,7 +135,9 @@ def evaluate_case(cfg: Config, backend: Backend, case: Path) -> dict[str, Any]:
         safety = sum(1 for memory in active if has_secret(str(memory.get("text", ""))))
         return {
             "case": case.name,
-            "episodes": len(episodes),
+            "episodes": (
+                len((case / "episodes.jsonl").read_text(encoding="utf-8").splitlines())
+            ),
             "active_memories": len(active),
             "gold_facts": len(gold),
             "precision": round(precision, 3),
@@ -156,6 +163,8 @@ def evaluate_case(cfg: Config, backend: Backend, case: Path) -> dict[str, Any]:
             ],
             "run_status": result.status,
         }
+    finally:
+        shutil.rmtree(td, ignore_errors=True)
 
 
 def run_suite(cfg: Config, backend: Backend, suite: str | Path) -> dict[str, Any]:
@@ -176,7 +185,12 @@ def run_suite(cfg: Config, backend: Backend, suite: str | Path) -> dict[str, Any
         "temporal_accuracy": mean("temporal_accuracy"),
         "safety_violations": sum(int(case["safety_violations"]) for case in per_case),
         "duration_s": round(sum(float(case["duration_s"]) for case in per_case), 2),
-        "prompt_tokens": sum(int((case.get("usage") or {}).get("extract", {}).get("prompt_tokens", 0)) for case in per_case),
-        "completion_tokens": sum(int((case.get("usage") or {}).get("extract", {}).get("completion_tokens", 0)) for case in per_case),
+        "prompt_tokens": sum(
+            int((case.get("usage") or {}).get("extract", {}).get("prompt_tokens", 0)) for case in per_case
+        ),
+        "completion_tokens": sum(
+            int((case.get("usage") or {}).get("extract", {}).get("completion_tokens", 0))
+            for case in per_case
+        ),
     }
     return {"suite": str(Path(suite)), "cases": n, "metrics": metrics, "per_case": per_case}
