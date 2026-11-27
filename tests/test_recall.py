@@ -152,3 +152,22 @@ def test_explain_shows_receipts_and_chain(cfg):
     assert payload["receipts"][0]["quote"] == "moved to postgres"
     assert payload["supersedes_chain"][0]["memory_id"] == old
     assert "memories" in status
+
+
+def test_abstention_uses_the_best_covering_hit_not_just_the_top_row(cfg):
+    with _store(cfg) as store:
+        store.insert_memory(
+            kind="fact", section="environment", text="The homelab host is an OptiPlex 7060.",
+            evidence=[], salience=1.0, confidence=1.0,
+        )
+        store.insert_memory(
+            kind="fact", section="environment", text="The homelab runs Ubuntu 24.04.",
+            evidence=[], salience=0.0, confidence=0.5,
+        )
+    service = RecallService(cfg)
+    try:
+        result = service.recall("what operating system version does the homelab run", k=5)
+    finally:
+        service.close()
+    assert not result.abstained
+    assert any("Ubuntu" in hit.memory["text"] for hit in result.hits)

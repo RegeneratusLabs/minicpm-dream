@@ -22,7 +22,6 @@ from typing import Any
 from ..backends.base import Backend
 from ..config import Config
 from ..recall import RecallService
-from ..store.db import Store
 from ..util.text import containment, jaccard, normalize_text
 
 ANSWER_TASK = "ANSWER"
@@ -210,9 +209,11 @@ def _hit_matches(hit: dict[str, Any], gold_texts: list[str]) -> bool:
 def _answer(backend: Backend, item: QAItem, memory_block: str) -> tuple[str, dict[str, Any]]:
     system = (
         "You answer questions about a user from a private memory of their past conversations. "
-        "Use only the memory provided. If the memory does not contain the answer, reply with "
-        "exactly UNKNOWN. Answer in one short sentence and never invent dates or names.\n"
-        f"TASK: {ANSWER_TASK}"
+        "Use only the memory provided. The memory is written in the third person and may call "
+        "that person 'the user'; it is the same person the question asks about. Answer with "
+        "the specific detail requested even when the memory words it differently. If the memory "
+        "does not contain the answer, reply with exactly UNKNOWN. Answer in one short "
+        f"sentence and never invent dates or names.\nTASK: {ANSWER_TASK}"
     )
     memory = memory_block.strip() or "(no memory available)"
     user = f"MEMORY\n{memory}\n\nQUESTION\n{item.question}"
@@ -278,6 +279,9 @@ def evaluate_qa_case(
                     "hits": [h.as_dict() for h in recall.hits[:3]],
                 }
             )
+        active = service.store.active_memories()
+        active_count = len(active)
+        stored_texts = [str(row.get("text", "")) for row in active[:50]]
     finally:
         service.close()
         for suffix in ("", "-wal", "-shm"):
@@ -305,7 +309,8 @@ def evaluate_qa_case(
             "status": result.status,
             "candidates": result.counters.get("candidates", 0),
             "applied": result.counters.get("applied", 0),
-            "active": len(store_active(run_cfg)),
+            "active": active_count,
+            "memories": stored_texts,
         },
         "retrieval_hit_rate": round(sum(1 for row in per_item if row["retrieval_hit"]) / n, 3),
         "abstain_rate": round(sum(1 for row in per_item if row["abstained"]) / n, 3),
@@ -318,14 +323,6 @@ def evaluate_qa_case(
         "prompt_tokens_without_memory": prompt_tokens_without,
         "per_item": per_item,
     }
-
-
-def store_active(cfg: Config) -> list[dict[str, Any]]:
-    try:
-        with Store(cfg.paths.db) as store:
-            return store.active_memories()
-    except Exception:  # noqa: BLE001
-        return []
 
 
 def run_qa_suite(

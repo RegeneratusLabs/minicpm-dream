@@ -27,13 +27,19 @@ from ..util.timeutil import human_age, iso_utc, parse_timestamp, utc_now
 # Sections where a fact does not go stale with age.
 DURABLE_SECTIONS = {"identity", "preferences"}
 # Query-coverage below this is "I do not have this", not "here is a weak guess".
-DEFAULT_MIN_COVERAGE = 0.25
+DEFAULT_MIN_COVERAGE = 0.2
 
 
 def _stem_match(query: str, text: str) -> bool:
+    """Tolerate inflection without a stemmer: run/runs, editor/editors, prefer/prefers."""
     if query == text:
         return True
-    return len(query) >= 4 and len(text) >= 4 and (text.startswith(query) or query.startswith(text))
+    short, long_ = (query, text) if len(query) <= len(text) else (text, query)
+    if len(short) >= 4:
+        return long_.startswith(short)
+    # Three-letter stems only match their immediate inflections (run -> runs),
+    # not arbitrary longer words (car -> cardigan).
+    return len(short) >= 3 and long_.startswith(short) and len(long_) - len(short) <= 2
 
 
 def _coverage(query_tokens: set[str], text_tokens: set[str]) -> float:
@@ -318,10 +324,16 @@ class RecallService:
             scored.append((self._score(query_tokens, row, now), row))
         scored.sort(key=lambda pair: pair[0], reverse=True)
 
+        # Abstain on the question, not on the top row: the best-covering hit is
+        # often not the highest-scored one (a generic row can outrank a precise
+        # answer), and abstaining there would hide a fact we actually hold.
         best_coverage = 0.0
         if query_tokens:
-            for _score, row in scored[:1]:
-                best_coverage = _coverage(query_tokens, token_set(str(row.get("text", ""))))
+            for _score, row in scored[: max(1, k)]:
+                best_coverage = max(
+                    best_coverage,
+                    _coverage(query_tokens, token_set(str(row.get("text", "")))),
+                )
         hits: list[RecallHit] = []
         for score, row in scored[: max(1, k)]:
             receipts = self._receipts(str(row["id"]))

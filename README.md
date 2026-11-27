@@ -123,23 +123,24 @@ answers them with and without memory.
 minicpm-dream eval-qa --suite evals/synthetic-days/full-day --backend llama_cpp
 ```
 
-The offline mock demo (`make demo`) prints, with a scripted stand-in answerer
-rather than a model:
+Measured with MiniCPM5-2B on the reference 6-core CPU (llama.cpp b12144, 4
+threads, no GPU), 16 hand-written questions over the 24-message day:
 
 ```text
-suite evals/synthetic-days/basic · 1 case(s) · 5 questions
-with memory    80%  (retrieval hit 80%)
+suite evals/synthetic-days/full-day · 1 case(s) · 16 questions
+with memory    88%  (retrieval hit 94%)
 without memory 0%
-delta          +80%
-recall latency p50 0.34ms · p95 0.7ms
+delta          +88%
+recall latency p50 1.0ms · p95 1.2ms
 ```
 
 The without-memory run is the control: an agent with no memory should say
 UNKNOWN, not invent the answer. The shipped fixture also encodes a known gap —
 a retraction ("I no longer use Ollama") is still rejected as a new fact, so that
-question fails on purpose until negative facts are stored. The mock numbers show
-the harness works; a real-backend number is what you should quote, and only from
-your machine.
+question fails on purpose until negative facts are stored. The remaining failure
+is a reading miss, not a retrieval one: the tea memory was returned and the 2B
+still answered UNKNOWN. `make demo` runs the same harness against the scripted
+mock (80% vs 0%) with no model download.
 
 ## A diary you can read
 

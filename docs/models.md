@@ -172,10 +172,24 @@ A suite can ship `qa.json` (hand-written questions) or fall back to cloze
 questions derived from `gold.json`. Hand-written questions are the honest ones;
 auto-generated cloze items are a smoke test.
 
-The only measured numbers committed so far are the offline mock demo (scripted
-stand-in answerer): 80% with memory, 0% without, recall p50 0.34 ms on the
-5-question `basic` fixture. A real-backend table belongs here once it has been
-run; do not quote the mock as model quality.
+The committed numbers on the reference CPU (llama.cpp b12144, 4 threads, no GPU,
+another `llama-server` sharing the CPU at the time) are:
+
+| Suite | Questions | Retrieval hit | With memory | Without memory | Delta | Recall p50 / p95 |
+|---|---:|---:|---:|---:|---:|---:|
+| `basic` | 5 | 80% | 80% | 0% | +80 | 0.85 / 0.99 ms |
+| `full-day` | 16 | 94% | **87.5%** | **0%** | +87.5 | 1.0 / 1.2 ms |
+
+Failures on `full-day` were the known retraction gap plus one reading failure:
+the jasmine-tea memory was retrieved and the answerer still said UNKNOWN. The
+stochastic part is extraction: an earlier `full-day` run stored 13 memories
+instead of 14 (it missed the one-turn identity fact) and scored 62.5%; recall
+was about 1 ms in every run. That is one run per suite — rerun with `--json`
+and compare before quoting a movement.
+
+The offline mock demo (`make demo`) shows the same harness with a scripted
+stand-in answerer: 80% with memory, 0% without. Do not quote the mock as model
+quality.
 
 What the real run actually did:
 

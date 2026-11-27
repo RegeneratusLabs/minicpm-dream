@@ -192,7 +192,7 @@ class BudgetsCfg:
 class RecallCfg:
     stale_days: int = 180
     k: int = 6
-    min_coverage: float = 0.25
+    min_coverage: float = 0.2
     hybrid: bool = False
 
 

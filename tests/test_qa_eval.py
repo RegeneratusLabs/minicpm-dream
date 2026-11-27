@@ -55,6 +55,7 @@ def test_evaluate_qa_case_measures_the_gap_between_with_and_without_memory(cfg):
     assert report["delta"] >= 0.5
     assert report["retrieval_hit_rate"] >= 0.5
     assert report["recall_p50_ms"] >= 0
+    assert report["ledger"]["active"] >= 3  # counted before the temp ledger is removed
     assert any(row["retrieval_hit"] for row in report["per_item"])
     # The without-memory answers must be explicit unknowns, not invented facts.
     assert all(
